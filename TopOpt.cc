@@ -289,10 +289,7 @@ PetscErrorCode TopOpt::SetUp () {
 //  nnd2 = 0;
 //  nStructureEle = 0;
 //  nSupportEle = 0;
-//  alpha1 = 1.0 / 4;
-//  alpha2 = 1.0 / 4;
-//  alpha3 = 1.0 / 4;
-//  alpha4 = 1.0 / 4;
+
 
   ierr = SetUpMESH ();
   CHKERRQ(ierr);
