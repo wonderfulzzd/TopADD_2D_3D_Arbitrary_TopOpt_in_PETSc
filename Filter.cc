@@ -38,8 +38,8 @@ Filter::Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPass
   R = Rin;
   filterType = filterT;
 
-  // Call the setup method, zzd modified
-  SetUp (da_nodes, x, xPassive0, xPassive1, xPassive2);
+  // Call the setup method
+  SetUp (da_nodes, x, xPassive0, xPassive1, xPassive2); // # modified
 }
 
 Filter::~Filter () {
@@ -296,7 +296,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
   VecSet (dx, 1.0);
 
   if (filterType == 0 || filterType == 1) {
-#if DIM == 2
+#if DIM == 2   // # new
     // Extract information from the nodal mesh
     PetscInt M, N, md, nd;
     DMBoundaryType bx, by;
@@ -607,6 +607,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
         }
       }
     }
+    // # new
     // Exclude the non-designable domain from the distance matrix
     // Get pointer to the Petsc Vectors
     PetscScalar ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D;
@@ -666,7 +667,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     // Clean up
     VecRestoreArray (lcoor, &lcoorp);
     VecDestroy (&dummy);
-#if DIM == 2
+#if DIM == 2    // # new
     delete[] Lx;
     delete[] Ly;
     DMDAVecRestoreArray (da_elem, xPassive0loc, &xPassive0p_2D);
@@ -689,7 +690,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
   return ierr;
 }
 
-#if DIM == 2
+#if DIM == 2    // # new
 PetscErrorCode Filter::DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]) { // zzd
   PetscErrorCode ierr;
   DM_DA *da = (DM_DA*) dm->data;
