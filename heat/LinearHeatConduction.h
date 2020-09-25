@@ -7,7 +7,7 @@
 #include <petsc.h>
 #include <petsc/private/dmdaimpl.h>
 
-#include "options.h" // framework options, zzd
+#include "options.h" // framework options, new
 
 /*
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
@@ -29,7 +29,7 @@ class LinearHeatConduction {
   public:
     // Constructor
     LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt numLoads,
-        Vec xPassive0, Vec xPassive1, Vec xPassive2); //zzd
+        Vec xPassive0, Vec xPassive1, Vec xPassive2); //new
 
     // Destructor
     ~LinearHeatConduction ();
@@ -59,9 +59,9 @@ class LinearHeatConduction {
 
   private:
     // Logical mesh
-    PetscInt nn[DIM]; // Number of nodes in each direction, zzd
-    PetscInt ne[DIM]; // Number of elements in each direction, zzd
-    PetscScalar xc[2 * DIM]; // Domain coordinates, zzd
+    PetscInt nn[DIM]; // Number of nodes in each direction, new
+    PetscInt ne[DIM]; // Number of elements in each direction, new
+    PetscScalar xc[2 * DIM]; // Domain coordinates, new
 
     // Linear algebra
     Mat K; // Global heat conduction matrix
@@ -70,24 +70,24 @@ class LinearHeatConduction {
     Vec N; // Dirichlet vector (used when imposing BCs)
 #if DIM == 2
 #if PHYSICS == 0  // 0 is linear elasticity
-    static const PetscInt nedof = 8; // zzd Number of elemental dofs
+    static const PetscInt nedof = 8; // new Number of elemental dofs
 #elif PHYSICS == 1 // 1 is compliant
-    static const PetscInt nedof = 8; // zzd Number of elemental dofs
+    static const PetscInt nedof = 8; // new Number of elemental dofs
 #elif PHYSICS == 2 // 2 is linear heat conduction
-    static const PetscInt nedof = 4; // zzd Number of elemental dofs
+    static const PetscInt nedof = 4; // new Number of elemental dofs
 #endif
 
 #elif DIM == 3
 #if PHYSICS == 0  // 0 is linear elasticity
-    static const PetscInt nedof = 24; // zzd Number of elemental dofs
+    static const PetscInt nedof = 24; // new Number of elemental dofs
 #elif PHYSICS == 1 // 1 is compliant
-    static const PetscInt nedof = 24; // zzd Number of elemental dofs
+    static const PetscInt nedof = 24; // new Number of elemental dofs
 #elif PHYSICS == 2 // 2 is linear heat conduction
-    static const PetscInt nedof = 8; // zzd Number of elemental dofs
+    static const PetscInt nedof = 8; // new Number of elemental dofs
 #endif
 #endif
 
-    PetscScalar KE[nedof * nedof]; // Element heat conductivity matrix, zzd
+    PetscScalar KE[nedof * nedof]; // Element heat conductivity matrix, new
 
     // Solver
     KSP ksp; // Pointer to the KSP object i.e. the linear solver+prec
@@ -95,7 +95,7 @@ class LinearHeatConduction {
 
     // Set up the FE mesh and data structures
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, DM da_elem, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2); //zzd
+        Vec xPassive1, Vec xPassive2); //new
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
@@ -109,24 +109,24 @@ class LinearHeatConduction {
     PetscErrorCode SetUpSolver ();
 
 #if DIM == 2
-    // Routine that doesn't change the element type upon repeated calls, zzd
+    // Routine that doesn't change the element type upon repeated calls, new
     PetscErrorCode DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);
 
-    // Methods used to assemble the element heat conductivity matrix, zzd
+    // Methods used to assemble the element heat conductivity matrix, new
     PetscInt Quad4Isoparametric (PetscScalar *X, PetscScalar *Y,
         PetscInt redInt, PetscScalar *ke);
     void DifferentiatedShapeFunctions_2D (PetscScalar xi, PetscScalar eta,
-        PetscScalar *dNdxi, PetscScalar *dNdeta); // zzd
-    PetscScalar Inverse2M (PetscScalar J[][2], PetscScalar invJ[][2]); // zzd
+        PetscScalar *dNdxi, PetscScalar *dNdeta); // new
+    PetscScalar Inverse2M (PetscScalar J[][2], PetscScalar invJ[][2]); // new
 
 #elif DIM == 3
 
-    // Routine that doesn't change the element type upon repeated calls, zzd
+    // Routine that doesn't change the element type upon repeated calls, new
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);
 
-    // Methods used to assemble the element heat conductivity matrix, zzd
+    // Methods used to assemble the element heat conductivity matrix, new
     PetscInt Hex8Isoparametric (PetscScalar *X, PetscScalar *Y, PetscScalar *Z,
         PetscInt redInt, PetscScalar *ke);
     void DifferentiatedShapeFunctions (PetscScalar xi, PetscScalar eta,

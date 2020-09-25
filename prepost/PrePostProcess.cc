@@ -102,7 +102,7 @@ PetscErrorCode PrePostProcess::UpdateNodeDensity (TopOpt *opt) {
   VecGetArray (opt->xPassive1, &xPassive1p);
   VecGetArray (opt->xPassive2, &xPassive2p);
 
-  // Edof array, zzd
+  // Edof array, new
   PetscInt edof[nen];
 
   // Loop over elements
@@ -495,7 +495,7 @@ PetscErrorCode PrePostProcess::CleanUp () {
 
 #if DIM == 2
 PetscErrorCode PrePostProcess::DMDAGetElements_2D (DM dm, PetscInt *nel,
-    PetscInt *nen, const PetscInt *e[]) { // zzd
+    PetscInt *nen, const PetscInt *e[]) { // new
   PetscErrorCode ierr = 0;
   DM_DA *da = (DM_DA*) dm->data;
   PetscInt i, xs, xe, Xs, Xe;

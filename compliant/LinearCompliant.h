@@ -7,7 +7,7 @@
 #include <petsc.h>
 #include <petsc/private/dmdaimpl.h>
 
-#include "options.h" // framework options, zzd
+#include "options.h" // framework options, new
 
 /*
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
@@ -29,7 +29,7 @@ class LinearCompliant {
   public:
     // Constructor
     LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2); //zzd
+        Vec xPassive1, Vec xPassive2); //new
 
     // Destructor
     ~LinearCompliant ();
@@ -59,9 +59,9 @@ class LinearCompliant {
 
   private:
     // Logical mesh
-    PetscInt nn[DIM]; // Number of nodes in each direction, zzd
-    PetscInt ne[DIM]; // Number of elements in each direction, zzd
-    PetscScalar xc[2 * DIM]; // Domain coordinates, zzd
+    PetscInt nn[DIM]; // Number of nodes in each direction, new
+    PetscInt ne[DIM]; // Number of elements in each direction, new
+    PetscScalar xc[2 * DIM]; // Domain coordinates, new
 
     // Linear algebra
     Mat K; // Global stiffness matrix
@@ -69,11 +69,11 @@ class LinearCompliant {
     Vec RHS; // Load vector
     Vec N; // Dirichlet vector (used when imposing BCs)
 #if DIM == 2
-    static const PetscInt nedof = 8; // zzd Number of elemental dofs
+    static const PetscInt nedof = 8; // new Number of elemental dofs
 #elif DIM == 3
-    static const PetscInt nedof = 24; // zzd Number of elemental dofs
+    static const PetscInt nedof = 24; // new Number of elemental dofs
 #endif
-    PetscScalar KE[nedof * nedof]; // Element stiffness matrix, zzd
+    PetscScalar KE[nedof * nedof]; // Element stiffness matrix, new
 
     // Solver
     KSP ksp; // Pointer to the KSP object i.e. the linear solver+prec
@@ -90,11 +90,11 @@ class LinearCompliant {
     Vec Sv; // spring vector
 
     // Extract DMDA from input one and set up a new one for linear compliant
-    PetscErrorCode SetUpDMDA (DM da_nodes); //zzd
+    PetscErrorCode SetUpDMDA (DM da_nodes); //new
 
     // Update the load and boundary conditions
     PetscErrorCode SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
-        Vec xPassive2, PetscInt loadStep); //zzd
+        Vec xPassive2, PetscInt loadStep); //new
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
@@ -108,24 +108,24 @@ class LinearCompliant {
     PetscErrorCode SetUpSolver ();
 
 #if DIM == 2
-    // Routine that doesn't change the element type upon repeated calls, zzd
+    // Routine that doesn't change the element type upon repeated calls, new
     PetscErrorCode DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);
 
-    // Methods used to assemble the element stiffness matrix, zzd
+    // Methods used to assemble the element stiffness matrix, new
     PetscInt Quad4Isoparametric (PetscScalar *X, PetscScalar *Y, PetscScalar nu,
         PetscInt redInt, PetscScalar *ke);
     void DifferentiatedShapeFunctions_2D (PetscScalar xi, PetscScalar eta,
-        PetscScalar *dNdxi, PetscScalar *dNdeta); // zzd
-    PetscScalar Inverse2M (PetscScalar J[][2], PetscScalar invJ[][2]); // zzd
+        PetscScalar *dNdxi, PetscScalar *dNdeta); // new
+    PetscScalar Inverse2M (PetscScalar J[][2], PetscScalar invJ[][2]); // new
 
 #elif DIM == 3
 
-    // Routine that doesn't change the element type upon repeated calls, zzd
+    // Routine that doesn't change the element type upon repeated calls, new
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);
 
-    // Methods used to assemble the element stiffness matrix, zzd
+    // Methods used to assemble the element stiffness matrix, new
     PetscInt Hex8Isoparametric (PetscScalar *X, PetscScalar *Y, PetscScalar *Z,
         PetscScalar nu, PetscInt redInt, PetscScalar *ke);
     void DifferentiatedShapeFunctions (PetscScalar xi, PetscScalar eta,

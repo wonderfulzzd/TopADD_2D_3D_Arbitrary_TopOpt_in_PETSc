@@ -109,7 +109,7 @@ class PrePostProcess {
     PetscErrorCode DMDAGetElements_2D (
         DM dm, PetscInt *nel,
         PetscInt *nen,
-        const PetscInt *e[]); // zzd
+        const PetscInt *e[]); // new
 #elif DIM == 3
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);

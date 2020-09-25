@@ -53,7 +53,7 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
 #if  DIM == 2
   // Extract information from input DM and create one for the linear elasticity
   // number of nodal dofs: (u,v)
-  PetscInt numnodaldof = 1; // zzd
+  PetscInt numnodaldof = 1; // new
 
   // Stencil width: each node connects to a box around it - linear elements
   PetscInt stencilwidth = 1;
@@ -239,7 +239,7 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
 #if DIM == 3
   // Extract information from input DM and create one for the linear elasticity
   // number of nodal dofs: (u,v,w)
-  PetscInt numnodaldof = 1; // zzd
+  PetscInt numnodaldof = 1; // new
 
   // Stencil width: each node connects to a box around it - linear elements
   PetscInt stencilwidth = 1;
@@ -541,11 +541,11 @@ PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
   PetscScalar *df;
   VecGetArray (dfdx, &df);
 
-  // Edof array, zzd
+  // Edof array, new
   PetscInt edof[nedof];
 
   fx[0] = 0.0;
-  // Loop over elements, zzd
+  // Loop over elements, new
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
     if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0) {
@@ -578,7 +578,7 @@ PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
   fx[0] = 0.0;
   MPI_Allreduce(&tmp, &(fx[0]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
 
-  // Get mash vectors to exclude the non design domain from dgdx (no better way?) zzd newly added
+  // Get mash vectors to exclude the non design domain from dgdx (no better way?) new newly added
   Vec tmpVec0, tmpVec1, tmpVec2;
   VecDuplicate (dgdx, &tmpVec0);
   VecCopy (xPassive0, tmpVec0);
@@ -602,10 +602,10 @@ PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec2);
 
   // Compute volume constraint gx[0]
-  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2; // zzd newly added
-  VecSum (xPassive0, &nNonDesign0); // zzd newly added
-  VecSum (xPassive1, &nNonDesign1); // zzd newly added
-  VecSum (xPassive2, &nNonDesign2); // zzd newly added
+  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2; // new newly added
+  VecSum (xPassive0, &nNonDesign0); // new newly added
+  VecSum (xPassive1, &nNonDesign1); // new newly added
+  VecSum (xPassive2, &nNonDesign2); // new newly added
 
   PetscInt neltot;
   VecGetSize (tmpxPhys, &neltot);
@@ -704,11 +704,11 @@ PetscErrorCode LinearHeatConduction::AssembleConductivityMatrix (Vec xPhys,
   // Zero the matrix
   MatZeroEntries (K);
 
-  // Edof array, zzd
+  // Edof array, new
   PetscInt edof[nedof];
   PetscScalar ke[nedof * nedof];
 
-  // Loop over elements, zzd
+  // Loop over elements, new
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
     for (PetscInt j = 0; j < nen; j++) {
@@ -822,7 +822,7 @@ PetscErrorCode LinearHeatConduction::SetUpSolver () {
 
   // SET THE DEFAULT SOLVER PARAMETERS
   // The fine grid solver settings
-  PetscScalar rtol = 1.0e-5; //zzd tmp
+  PetscScalar rtol = 1.0e-5; //new tmp
   //  PetscScalar rtol         = 1.0e-5;
   PetscScalar atol = 1.0e-50;
   PetscScalar dtol = 1.0e5;
@@ -887,7 +887,7 @@ PetscErrorCode LinearHeatConduction::SetUpSolver () {
     // Set 0 to the finest level
     daclist[0] = da_nodal;
 
-    // Coordinates, zzd
+    // Coordinates, new
 #if DIM == 2
     PetscReal xmin = xc[0], xmax = xc[1], ymin = xc[2], ymax = xc[3];
 #elif DIM == 3
