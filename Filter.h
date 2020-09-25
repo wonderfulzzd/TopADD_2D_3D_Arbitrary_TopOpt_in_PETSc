@@ -8,7 +8,7 @@
 #include <math.h>
 #include <petsc/private/dmdaimpl.h>
 
-#include "options.h" // framework options, zzd
+#include "options.h" // # new ; framework options
 
 /* -----------------------------------------------------------------------------
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
@@ -94,7 +94,7 @@ class Filter {
     ;
 
     // Routine that doesn't change the element type upon repeated calls
-#if DIM == 2
+#if DIM == 2   // # new
     PetscErrorCode DMDAGetElements_2D(DM dm, PetscInt* nel, PetscInt* nen, const PetscInt* e[]); // zzd
 #elif DIM == 3
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]);
