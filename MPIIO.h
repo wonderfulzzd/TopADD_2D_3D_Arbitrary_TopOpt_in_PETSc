@@ -9,7 +9,7 @@
 #include <petscdmda.h>
 #include <string>
 
-#include "options.h" // framework options, zzd
+#include "options.h" // # new; framework options
 
 /* -----------------------------------------------------------------------------
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
@@ -48,7 +48,7 @@ class MPIIO {
     // NOT CLEAN INTERFACE: REPLACE BY STD::PAIR OR SUCH !!!!!!
     PetscErrorCode WriteVTK (DM da_nodes, Vec U, Vec nodeDen, Vec x,
         Vec xTilde, Vec xPhys, Vec xPassive0, Vec xPassive1, Vec xPassive2,
-        PetscInt itr);
+        PetscInt itr);  // # modified
 
   private:
     // -------------- METHODS -----------------------------------------
@@ -96,9 +96,9 @@ class MPIIO {
     unsigned long int *nPointsMyrank, *nCellsMyrank;
     float *workPointField, *workCellField;
 
-#if DIM == 2
+#if DIM == 2  // # new
     PetscErrorCode DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
-        const PetscInt *e[]); // zzd
+        const PetscInt *e[]);
 #elif DIM == 3
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]);
 #endif

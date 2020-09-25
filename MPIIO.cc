@@ -38,7 +38,7 @@ MPIIO::MPIIO (DM da_nodes, int nPf, std::string pnames, int nCf, std::string cna
   // User defined string
   std::string infoString = "TopOpt result version 1.1";
   // Maximum number of points per element
-#if DIM == 2
+#if DIM == 2  // # new
   int nPEl = 4; // 2D includes 4 nodes per element
 #elif DIM == 3
   int nPEl = 8;
@@ -76,14 +76,14 @@ MPIIO::MPIIO (DM da_nodes, int nPf, std::string pnames, int nCf, std::string cna
   // Get the FE mesh structure (from the nodal mesh)
   PetscInt nel, nen;
   const PetscInt *necon;
-#if DIM == 2
+#if DIM == 2 // # new
   DMDAGetElements_2D (da_nodes, &nel, &nen, &necon);
 #elif DIM == 3
   DMDAGetElements_3D (da_nodes, &nel, &nen, &necon);
 #endif
 
   // Number of points/cells in each domain for this rank
-#if DIM == 2
+#if DIM == 2  // # new
   PetscInt numnodaldof = 2;
 #elif DIM == 3
   PetscInt numnodaldof = 3;
@@ -96,7 +96,7 @@ MPIIO::MPIIO (DM da_nodes, int nPf, std::string pnames, int nCf, std::string cna
 
   // Write the points (or coordinates of the points)
   float *pointsDomain0 = new float[3 * nPointsMyrank[0]]; // always use "3" because point data in VTK All point data must use 3 coordinates
-#if DIM == 2
+#if DIM == 2  // # new
   for (unsigned long int i = 0; i < nPointsMyrank[0]; i++) { // 2D
     // Convert to single precission to save space
     pointsDomain0[3 * i] = float (coordinatesPointer[DIM * i]);
@@ -122,7 +122,7 @@ MPIIO::MPIIO (DM da_nodes, int nPf, std::string pnames, int nCf, std::string cna
   unsigned long int CellOffset = 0;
 
   for (unsigned long int i = 0; i < nCellsMyrank[0]; i++) {
-#if DIM == 2
+#if DIM == 2  // # new
     // Element type is the first number outputted:
     if (nen == 4) { // QUAD element
       cellsTypes0[i] = 9; // (in vtk QUAD element type is 9), http://victorsndvg.github.io/FEconv/formats/vtk.xhtml
@@ -236,7 +236,7 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
     workPointField[i] = float (UlocalPointer[DIM * i]);
     // Uy
     workPointField[i + nPointsMyrank[0]] = float (UlocalPointer[DIM * i + 1]);
-#if DIM == 2
+#if DIM == 2   // # new
     // Uz fake, because all point data must use 3 coordinates in VTK files
     workPointField[i + 2 * nPointsMyrank[0]] = float (0.0);
 #elif DIM == 3
@@ -246,7 +246,7 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
     // Node density
     workPointField[i + 3 * nPointsMyrank[0]] = float (NDlocalPointer[DIM * i]);
   }
-#elif PHYSICS == 2
+#elif PHYSICS == 2   // # new
   for (unsigned long int i = 0; i < nPointsMyrank[0]; i++) {
     // Ux
     workPointField[i] = float (UlocalPointer[i]);
@@ -275,19 +275,19 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
   VecGetArray (x, &xp);
   VecGetArray (xTilde, &xt);
   VecGetArray (xPhys, &xpp);
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;
-  VecGetArray (xPassive0, &xPassive0p);
-  VecGetArray (xPassive1, &xPassive1p);
-  VecGetArray (xPassive2, &xPassive2p);
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;  // # new
+  VecGetArray (xPassive0, &xPassive0p);  // # new
+  VecGetArray (xPassive1, &xPassive1p);  // # new
+  VecGetArray (xPassive2, &xPassive2p);  // # new
 
   for (unsigned long int i = 0; i < nCellsMyrank[0]; i++) { // 2D/3D use the same code for cell field
     // Density
     workCellField[i + 0 * nCellsMyrank[0]] = float (xp[i]);
     workCellField[i + 1 * nCellsMyrank[0]] = float (xt[i]);
     workCellField[i + 2 * nCellsMyrank[0]] = float (xpp[i]);
-    workCellField[i + 3 * nCellsMyrank[0]] = float (xPassive0p[i]);
-    workCellField[i + 4 * nCellsMyrank[0]] = float (xPassive1p[i]);
-    workCellField[i + 5 * nCellsMyrank[0]] = float (xPassive2p[i]);
+    workCellField[i + 3 * nCellsMyrank[0]] = float (xPassive0p[i]);  // # new
+    workCellField[i + 4 * nCellsMyrank[0]] = float (xPassive1p[i]);  // # new
+    workCellField[i + 5 * nCellsMyrank[0]] = float (xPassive2p[i]);  // # new
   }
   writeCellFields (0, workCellField);
 
@@ -295,15 +295,15 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
   VecRestoreArray (x, &xp);
   VecRestoreArray (xTilde, &xt);
   VecRestoreArray (xPhys, &xpp);
-  VecRestoreArray (xPassive0, &xPassive0p);
-  VecRestoreArray (xPassive1, &xPassive1p);
-  VecRestoreArray (xPassive2, &xPassive2p);
+  VecRestoreArray (xPassive0, &xPassive0p); // # new
+  VecRestoreArray (xPassive1, &xPassive1p); // # new
+  VecRestoreArray (xPassive2, &xPassive2p); // # new
 
   // clean up
   ierr = VecDestroy (&Ulocal);
   CHKERRQ(ierr);
-  ierr = VecDestroy (&NDlocal);
-  CHKERRQ(ierr);
+  ierr = VecDestroy (&NDlocal);  // # new
+  CHKERRQ(ierr);  // # new
 
   return ierr;
 }
@@ -875,7 +875,7 @@ unsigned long int MPIIO::sum (unsigned long int *startPos,
   return total;
 }
 
-#if DIM == 2
+#if DIM == 2   // # new
 PetscErrorCode MPIIO::DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
     const PetscInt *e[]) {
   PetscErrorCode ierr;
