@@ -46,14 +46,11 @@ void TopOpt::Init () { // Dummy constructor
   /**
    * Newly added items
    */
-//  dfdx2 = NULL;
-//  dfdx3 = NULL;
-//  dfdx4 = NULL;
-  xPassive0 = NULL;
-  xPassive1 = NULL;
-  xPassive2 = NULL;
-  nodeDensity = NULL;
-  nodeAddingCounts = NULL;
+  xPassive0 = NULL;   // # new
+  xPassive1 = NULL;  // # new
+  xPassive2 = NULL;  // # new
+  nodeDensity = NULL;  // # new
+  nodeAddingCounts = NULL;  // # new
 
   SetUp ();
 }
@@ -86,21 +83,16 @@ TopOpt::~TopOpt () {
    * Newly added items
    */
   // Delete vectors
-//  if (dfdx2 != NULL) VecDestroy (&dfdx2);
-//  if (dfdx3 != NULL) VecDestroy (&dfdx3);
-//  if (dfdx4 != NULL) VecDestroy (&dfdx4);
   // Densities
-  if (xPassive0 != NULL) VecDestroy (&xPassive0);
-  if (xPassive1 != NULL) VecDestroy (&xPassive1);
-  if (xPassive2 != NULL) VecDestroy (&xPassive2);
-  if (nodeDensity != NULL) VecDestroy (&nodeDensity);
-  if (nodeAddingCounts != NULL) VecDestroy (&nodeAddingCounts);
-//  if (xFinalDesign != NULL) VecDestroy (&xFinalDesign);
-//  if (xSupportConnection != NULL) VecDestroy (&xSupportConnection);
+  if (xPassive0 != NULL) VecDestroy (&xPassive0);  // # new
+  if (xPassive1 != NULL) VecDestroy (&xPassive1);  // # new
+  if (xPassive2 != NULL) VecDestroy (&xPassive2);  // # new
+  if (nodeDensity != NULL) VecDestroy (&nodeDensity);  // # new
+  if (nodeAddingCounts != NULL) VecDestroy (&nodeAddingCounts);  // # new
   // Name strings of input STL files
-  if (inputSTL_DES != NULL) delete[] inputSTL_DES;
-  if (inputSTL_FIX != NULL) delete[] inputSTL_FIX;
-  if (inputSTL_LOD != NULL) delete[] inputSTL_LOD;
+  if (inputSTL_DES != NULL) delete[] inputSTL_DES;  // # new
+  if (inputSTL_FIX != NULL) delete[] inputSTL_FIX;  // # new
+  if (inputSTL_LOD != NULL) delete[] inputSTL_LOD;  // # new
 }
 
 // NO METHODS !
@@ -110,23 +102,17 @@ PetscErrorCode TopOpt::SetUp () {
   PetscErrorCode ierr = 0;
 
   // SET DEFAULTS for FE mesh and levels for MG solver
-#if DIM == 2
+#if DIM == 2   // # new
 
 #if PHYSICS == 0
   // Linear elasticity
-  nxyz[0] = 241; //193; //81;
-  nxyz[1] = 121; //97; //41;
+  nxyz[0] = 241;
+  nxyz[1] = 121;
   xc[0] = 0.0;
-  xc[1] = 2.0; //64.0; //2.0; //2.0;
+  xc[1] = 2.0;
   xc[2] = 0.0;
-  xc[3] = 1.0; //80.0; //1.0; //1.2;
-//  nxyz[0] = 601; //193;
-//  nxyz[1] = 201; //97;
-//  xc[0] = 0.0;
-//  xc[1] = 3.0; //2.0;
-//  xc[2] = 0.0;
-//  xc[3] = 1.0; //1.2;
-  numLoads = 1; // number of load domains
+  xc[3] = 1.0;
+  numLoads = 1; // # new; number of load domains
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
@@ -137,7 +123,7 @@ PetscErrorCode TopOpt::SetUp () {
   rmin = 6.0 * PetscMax(xc[1] / (nxyz[0] - 1),
              PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
   Emin = 1.0e-9;
-#elif PHYSICS == 1
+#elif PHYSICS == 1  // # new
   // Compliant
   nxyz[0] = 241;
   nxyz[1] = 121;
@@ -155,7 +141,7 @@ PetscErrorCode TopOpt::SetUp () {
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1),
                PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
   Emin = 1.0e-9;
-#elif PHYSICS == 2
+#elif PHYSICS == 2  // # new
   // Linear heat conduction
   nxyz[0] = 201;
   nxyz[1] = 249;
@@ -198,15 +184,15 @@ PetscErrorCode TopOpt::SetUp () {
 
 #if PHYSICS == 0
   // Linear elasticity
-  nxyz[0] = 481; //241; //97;//161;//273;//161;  //81; //97;
-  nxyz[1] = 241; //121; //49;//161;//137; //201;  //41; //49;
-  nxyz[2] = 241; //121; //49;//201;//201;//161;   //41; //49;
+  nxyz[0] = 65; // 129; 241
+  nxyz[1] = 33; // 65;  121
+  nxyz[2] = 33; // 65;  121
   xc[0] = 0.0;
-  xc[1] = 2.0; //2.0;//2.0;//2.0;
+  xc[1] = 2.0;
   xc[2] = 0.0;
-  xc[3] = 1.0; //2.5;//1.0;//2.0;
+  xc[3] = 1.0;
   xc[4] = 0.0;
-  xc[5] = 1.0; //2.0;//1.5;//2.5;
+  xc[5] = 1.0;
   numLoads = 1; // number of load domains
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
@@ -215,10 +201,9 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_FIX.STL");
   inputSTL_LOD[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_LOD.STL");
   volfrac = 0.12;
-  rmin = 12.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
-//  rmin = 6.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
+  rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // # modified 0.08;
   Emin = 1.0e-9;
-#elif PHYSICS == 1
+#elif PHYSICS == 1   // # new
   // Compliant
   nxyz[0] = 81; //241;
   nxyz[1] = 41; //121;
@@ -238,7 +223,7 @@ PetscErrorCode TopOpt::SetUp () {
   volfrac = 0.3;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
   Emin = 1.0e-9;
-#elif PHYSICS == 2
+#elif PHYSICS == 2   // # new
   // Linear heat conduction
   nxyz[0] = 201;
   nxyz[1] = 249;
@@ -283,13 +268,8 @@ PetscErrorCode TopOpt::SetUp () {
   /**
    * Newly added items
    */
-  E = 190E9;
-//  volfracSup = 0.2;
+  E = 1.0;
   nnd = 0;
-//  nnd2 = 0;
-//  nStructureEle = 0;
-//  nSupportEle = 0;
-
 
   ierr = SetUpMESH ();
   CHKERRQ(ierr);
@@ -304,7 +284,7 @@ PetscErrorCode TopOpt::SetUpMESH () {
 
   PetscErrorCode ierr = 0;
 
-#if DIM == 2
+#if DIM == 2   // # new
   // Read input from arguments
   PetscBool flg;
 
@@ -380,9 +360,9 @@ PetscErrorCode TopOpt::SetUpMESH () {
 
   // number of nodal dofs: Nodal design variable - NOT REALLY NEEDED
 #if PHYSICS == 0 // 0 is linear elastic
-  PetscInt numnodaldof = 2; // zzd
+  PetscInt numnodaldof = 2;
 #elif PHYSICS == 1  // 1 is compliant
-  PetscInt numnodaldof = 2; // zzd
+  PetscInt numnodaldof = 2;
 #elif PHYSICS == 2  // 2 is linear heat conduction
   PetscInt numnodaldof = 1;
 #endif
@@ -553,11 +533,11 @@ PetscErrorCode TopOpt::SetUpMESH () {
   PetscInt ny = nxyz[1];
   PetscInt nz = nxyz[2];
 
-  // number of nodal dofs: Nodal design variable - NOT REALLY NEEDED
+  // # modified; number of nodal dofs: Nodal design variable - NOT REALLY NEEDED
 #if PHYSICS == 0 // 0 is linear elastic
-  PetscInt numnodaldof = 3; // zzd
+  PetscInt numnodaldof = 3;
 #elif PHYSICS == 1  // 1 is compliant
-  PetscInt numnodaldof = 3; // zzd
+  PetscInt numnodaldof = 3;
 #elif PHYSICS == 2  // 2 is linear heat conduction
   PetscInt numnodaldof = 1;
 #endif
@@ -747,28 +727,11 @@ PetscErrorCode TopOpt::SetUpOPT () {
   ierr = VecDuplicate (nodeDensity, &nodeAddingCounts);
   CHKERRQ(ierr);
 
-//  ierr = VecDuplicate (xPhys, &xFinalDesign);
-//  CHKERRQ(ierr);
-//  ierr = VecDuplicate (xPhys, &xSupportConnection);
-//  CHKERRQ(ierr);
-  VecSet (xPassive0, 0);
-  VecSet (xPassive1, 0);
-  VecSet (xPassive2, 0);
-  VecSet (nodeDensity, 0);
-  VecSet (nodeAddingCounts, 0);
-//  VecSet (xFinalDesign, 0);
-//  VecSet (xSupportConnection, 0);
-
-  // Sensitivity vectors
-//  ierr = VecDuplicate (x, &dfdx2);
-//  CHKERRQ(ierr);
-//  VecSet (dfdx2, 0.0);
-//  ierr = VecDuplicate (x, &dfdx3);
-//  CHKERRQ(ierr);
-//  VecSet (dfdx3, 0.0);
-//  ierr = VecDuplicate (x, &dfdx4);
-//  CHKERRQ(ierr);
-//  VecSet (dfdx4, 0.0);
+  VecSet (xPassive0, 0); // # new
+  VecSet (xPassive1, 0); // # new
+  VecSet (xPassive2, 0); // # new
+  VecSet (nodeDensity, 0); // # new
+  VecSet (nodeAddingCounts, 0); // # new
 
   return (ierr);
 }
@@ -965,6 +928,15 @@ PetscErrorCode TopOpt::WriteRestartFiles (PetscInt *itr, MMA *mma) {
   VecView (xo2, view);
   VecView (U, view);
   VecView (L, view);
+
+  /**
+   * Newly added items
+   */
+  VecView(xPassive0, view);  // # new
+  VecView(xPassive1, view);  // # new
+  VecView(xPassive2, view);  // # new
+  VecView(nodeDensity, view);  // # new
+  VecView(nodeAddingCounts, view);  // # new
 
   // Clean up
   PetscViewerDestroy (&view);

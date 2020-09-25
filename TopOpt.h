@@ -10,7 +10,7 @@
 #include <petsc/private/dmdaimpl.h>
 #include <sstream>
 
-#include "options.h" // framework options, zzd
+#include "options.h" // # new; framework options
 
 /*
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
@@ -52,9 +52,9 @@ class TopOpt {
     PetscErrorCode WriteRestartFiles (PetscInt *itr, MMA *mma);
 
     // Physical domain variables
-    PetscScalar xc[2 * DIM]; // Domain coordinates, zzd
+    PetscScalar xc[2 * DIM]; // # modified; Domain coordinates
     PetscScalar dx, dy, dz; // Element size
-    PetscInt nxyz[DIM]; // Number of nodes in each direction, zzd
+    PetscInt nxyz[DIM]; // # modified; Number of nodes in each direction
     PetscInt nlvls; // Number of multigrid levels
     PetscScalar nu; // Poisson's ratio
     /* NOTE: two meshes are needed such the both
@@ -126,35 +126,18 @@ class TopOpt {
      * Newly added class members
      */
   public:
-    PetscScalar E; // Young's modulus
+    PetscScalar E; // # new; Young's modulus
     // Optimization parameters
-    PetscInt nnd; // Total number of non design variables
-//    PetscInt nnd2; // The temporary test of the non-design variables
-//    PetscInt nStructureEle;
-//    PetscInt nSupportEle;
-//    PetscScalar volfracSup; // Volume fraction of support structure
-//    PetscScalar alpha1, alpha2, alpha3, alpha4; // Weight ratio of the gravity and ISM
-//    PetscScalar fx2; // Objective value
-//    PetscScalar fx3; // Objective value
-//    PetscScalar fx4; // Objective value
-//    PetscScalar fscale2;
-//    PetscScalar fscale3;
-//    PetscScalar fscale4;
-    PetscInt numLoads; // number of load cases
-    std::string *inputSTL_DES; // name of part file
-    std::string *inputSTL_FIX; // name of fixture file
-    std::string *inputSTL_LOD; // name of loading domain file
-//    Vec xFinalDesign; // Final design distribution including structure and support
-    Vec xPassive0; // the passive hole element index
-    Vec xPassive1; // the passive fixture position element index
-    Vec xPassive2; // the passive loading position element index
-//    Vec xSupportConnection; // the connection solid element index for support opt
-//    Vec dfdx2; // Sensitivities of objective
-//    Vec dfdx3; // Sensitivities of objective
-//    Vec dfdx4; // Sensitivities of objective
-//    PetscScalar gapDis; // the gap distance between sup. and part.
-    Vec nodeDensity; // node density
-    Vec nodeAddingCounts; // node adding counts when summing node density from element density
+    PetscInt nnd; // # new; Total number of non design variables
+    PetscInt numLoads; // # new; number of load cases
+    std::string *inputSTL_DES; // # new; name of part file
+    std::string *inputSTL_FIX; // # new; name of fixture file
+    std::string *inputSTL_LOD; // # new; name of loading domain file
+    Vec xPassive0; // # new; the passive hole element index
+    Vec xPassive1; // # new; the passive fixture position element index
+    Vec xPassive2; // # new; the passive loading position element index
+    Vec nodeDensity; // # new; node density
+    Vec nodeAddingCounts; // # new; node adding counts when summing node density from element density
 };
 
 #endif
