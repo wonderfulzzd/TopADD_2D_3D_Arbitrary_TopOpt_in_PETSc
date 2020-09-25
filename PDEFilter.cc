@@ -41,7 +41,7 @@ PDEFilt::PDEFilt (DM da_nodes, PetscScalar rmin) {
   // Stencil width: each node connects to a box around it - linear elements
   PetscInt stencilwidth = 1;
 
-#if DIM == 2
+#if DIM == 2   // # new
     PetscScalar     dx, dy;
     DMBoundaryType  bx, by;
     DMDAStencilType stype;
@@ -238,7 +238,7 @@ PDEFilt::PDEFilt (DM da_nodes, PetscScalar rmin) {
   delete[] Lz;
 #endif
 
-#if DIM == 2
+#if DIM == 2  // # new
   PDEFilterMatrix_2D(dx, dy, R, KF, TF);
 #elif DIM == 3
   PDEFilterMatrix (dx, dy, dz, R, KF, TF);
@@ -356,7 +356,7 @@ void PDEFilt::MatAssemble () {
   // Get the FE mesh structure (from the nodal mesh)
   PetscInt nel, nen;
   const PetscInt *necon;
-#if DIM == 2
+#if DIM == 2  // # new
     DMDAGetElements_2D(da_nodal, &nel, &nen, &necon);
     MatZeroEntries(K);
     MatZeroEntries(T);
@@ -440,7 +440,7 @@ PetscErrorCode PDEFilt::SetUpSolver () {
     // Set 0 to the finest level
     daclist[0] = da_nodal;
 
-#if DIM == 2
+#if DIM == 2   // # new
             // Coordinates
             PetscReal xmin = xc[0], xmax = xc[1], ymin = xc[2], ymax = xc[3];
 
@@ -561,7 +561,7 @@ PetscErrorCode PDEFilt::SetUpSolver () {
   return 0;
 }
 
-#if DIM == 2
+#if DIM == 2   // # new
 PetscErrorCode PDEFilt::DMDAGetElements_2D(DM dm, PetscInt* nel, PetscInt* nen, const PetscInt* e[]) {
     PetscErrorCode ierr;
     DM_DA*         da = (DM_DA*)dm->data;

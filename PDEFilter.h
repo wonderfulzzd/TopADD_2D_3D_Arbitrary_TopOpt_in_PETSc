@@ -3,7 +3,7 @@
 #include "TopOpt.h"
 #include <petsc.h>
 
-#include "options.h"
+#include "options.h"   // # new
 /* -----------------------------------------------------------------------------
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
  Updated: June 2019, Niels Aage
@@ -41,7 +41,7 @@ class PDEFilt {
     PetscErrorCode Gradients (Vec OS, Vec FS);
 
   private:
-#if DIM == 2
+#if DIM == 2  // # new
     PetscInt    nn[2];   // Number of nodes in each direction
     PetscInt    ne[2];   // Number of elements in each direction
     PetscScalar xc[4];   // Domain coordinates
@@ -53,7 +53,7 @@ class PDEFilt {
     PetscScalar elemVol; // element volume
 
     PetscScalar R; // filter parameter
-#if DIM == 2
+#if DIM == 2  // # new
     PetscScalar KF[4 * 4]; // PDE filter stiffness matrix
     PetscScalar TF[4];     // PDE filter transformation matrix
 #elif DIM == 3
@@ -76,7 +76,7 @@ class PDEFilt {
 
     KSP ksp; // linear solver
 
-#if DIM == 2
+#if DIM == 2  // # new
     void PDEFilterMatrix_2D(PetscScalar dx, PetscScalar dy, PetscScalar R, PetscScalar* KK,
                          PetscScalar* T); // zzd
     PetscErrorCode DMDAGetElements_2D(DM dm, PetscInt* nel, PetscInt* nen, const PetscInt* e[]);
