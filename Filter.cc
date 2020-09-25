@@ -26,7 +26,7 @@
  * Modified by Zhidong Brian Zhang in May 2020, University of Waterloo
  */
 
-// zzd modified
+// # modified
 Filter::Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPassive0, Vec xPassive1, Vec xPassive2) {
   // Set all pointers to NULL
   H = NULL;
@@ -691,7 +691,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
 }
 
 #if DIM == 2    // # new
-PetscErrorCode Filter::DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]) { // zzd
+PetscErrorCode Filter::DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]) {
   PetscErrorCode ierr;
   DM_DA *da = (DM_DA*) dm->data;
   PetscInt i, xs, xe, Xs, Xe;

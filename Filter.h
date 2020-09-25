@@ -40,8 +40,8 @@
 class Filter {
 
   public:
-    // Constructor, zzd modified
-    Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPassive0, Vec xPassive1, Vec xPassive2); //zzd
+    // Constructor
+    Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPassive0, Vec xPassive1, Vec xPassive2); // # modified
 
     // Destructor
     ~Filter ();
@@ -73,8 +73,8 @@ class Filter {
     // PDE filtering
     PDEFilt *pdef; // PDE filter class
 
-    // Setup datastructures for the filter, zzd modified
-    PetscErrorCode SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, Vec xPassive2); //zzd
+    // Setup datastructures for the filter
+    PetscErrorCode SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, Vec xPassive2); // # new
 
     // Projection
     PetscErrorCode HeavisideFilter (Vec x, Vec y, PetscReal beta, PetscReal eta);
@@ -95,7 +95,7 @@ class Filter {
 
     // Routine that doesn't change the element type upon repeated calls
 #if DIM == 2   // # new
-    PetscErrorCode DMDAGetElements_2D(DM dm, PetscInt* nel, PetscInt* nen, const PetscInt* e[]); // zzd
+    PetscErrorCode DMDAGetElements_2D(DM dm, PetscInt* nel, PetscInt* nen, const PetscInt* e[]);
 #elif DIM == 3
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]);
 #endif
