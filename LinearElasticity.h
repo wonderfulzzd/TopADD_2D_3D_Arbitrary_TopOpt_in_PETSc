@@ -7,7 +7,7 @@
 #include <petsc.h>
 #include <petsc/private/dmdaimpl.h>
 
-#include "options.h" // framework options, zzd
+#include "options.h" // # new; framework options
 
 /*
  Authors: Niels Aage, Erik Andreassen, Boyan Lazarov, August 2013
@@ -39,7 +39,7 @@ class LinearElasticity {
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
         PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2);
+        Vec xPassive1, Vec xPassive2);  // # modified
 
     // Compute objective and constraints for the optimiation
     PetscErrorCode ComputeObjectiveConstraints (PetscScalar *fx,
@@ -69,21 +69,21 @@ class LinearElasticity {
 
   private:
     // Logical mesh
-    PetscInt nn[DIM]; // Number of nodes in each direction, zzd
-    PetscInt ne[DIM]; // Number of elements in each direction, zzd
-    PetscScalar xc[2 * DIM]; // Domain coordinates, zzd
+    PetscInt nn[DIM]; // # modified; Number of nodes in each direction
+    PetscInt ne[DIM]; // # modified; Number of elements in each direction
+    PetscScalar xc[2 * DIM]; // # modified; Domain coordinates
 
     // Linear algebra
     Mat K; // Global stiffness matrix
     Vec U; // Displacement vector
     Vec RHS; // Load vector
     Vec N; // Dirichlet vector (used when imposing BCs)
-#if DIM == 2
-    static const PetscInt nedof = 8; // zzd Number of elemental dofs
-#elif DIM == 3
-    static const PetscInt nedof = 24; // zzd Number of elemental dofs
+#if DIM == 2  // # new
+    static const PetscInt nedof = 8; // Number of elemental dofs
+#elif DIM == 3  // # new
+    static const PetscInt nedof = 24; // Number of elemental dofs
 #endif
-    PetscScalar KE[nedof * nedof]; // Element stiffness matrix, zzd
+    PetscScalar KE[nedof * nedof]; // # new; Element stiffness matrix
 
     // Solver
     KSP ksp; // Pointer to the KSP object i.e. the linear solver+prec
@@ -95,7 +95,7 @@ class LinearElasticity {
 
     // Set up the FE mesh and data structures
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
-        Vec xPassive2); //zzd
+        Vec xPassive2); // # modified
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
@@ -108,7 +108,7 @@ class LinearElasticity {
     // Start the solver
     PetscErrorCode SetUpSolver ();
 
-#if DIM == 2
+#if DIM == 2    // # new
     // Routine that doesn't change the element type upon repeated calls, zzd
     PetscErrorCode DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);

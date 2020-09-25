@@ -12,3 +12,4 @@
 
 // Physical problems to be studied
 #define PHYSICS 0       //0-Linear elasticity, 1-Compliant, 2-Heat conduction
+
