@@ -1,6 +1,6 @@
-TopOpt_in_PETSc
+2D/3D_Integrated_TopOpt_in_PETSc_with_Arbitrary_Design_Domains
 ===============
-A 3D large-scale topology optimization code using PETSc
+A 2D/3D integrated topology optimization parallel-computing framework for arbitrary design domains
 ===============
 
 The code (or framework) presented on this page is a fully parallel framework for conducting very large scale topology optimziation on structured grids. For more
