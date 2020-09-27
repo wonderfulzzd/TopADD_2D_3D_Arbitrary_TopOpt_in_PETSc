@@ -1,44 +1,47 @@
-2D/3D_Integrated_TopOpt_in_PETSc_with_Arbitrary_Design_Domains
+2D_3D_Arbitrary_TopOpt_in_PETSc
 ===============
 A 2D/3D integrated topology optimization parallel-computing framework for arbitrary design domains
 ===============
 
-The code (or framework) presented on this page is a fully parallel framework for conducting very large scale topology optimziation on structured grids. For more
-details see www.topopt.dtu.dk/PETSc.
+The code solves topology optimization problems with arbitrary design domains in either 2D or 3D. By default, it solves a 2D compliance minimization problem as shown in the below picture:
 
-Updated and refactored to remove dependence of TopOpt.cc/h in all other classe,
-June, 2019, Niels Aage
+![2D problem](pic/01.jpg?raw=true "2D Example")
 
-To clone repository:
->> git clone https://github.com/topopt/TopOpt_in_PETSc.git
+Moreover, it can solve 3D problems as well as two other problems: compliant design and heat conduction problems:
 
-NOTE: The code requires PETSc version 3.11.0 or newer ! Also note that the code is not tested against the development branch on git.
-
-This code has been tested on:
-- Linux systems including: Ubuntu 18.04, Red hat enterprise linux 8
-
-This code requires the following external software to work:
-- PETSc version 3.11.4 or earlier (though never than 3.8.x)
-- Requires LAPACK/BLAS
-- Requires MPI
-
-Compile following rules in makefile_ref
-
-Normal compilation time of framework, e.g. 4s: "make topopt -j"
-
-Run the base example by typing e.g.: "mpirun -np 4 ./topopt"
-
-Postprocess results using Python 2.6: "bin2vtu #" where # refers to the iteration number
-
-Visualize using ParaView (version 5.7 or earlier)
-
-The expected result of the base code is the (but on a coarse mesh!) cantilever beam from:
-Aage, N., Andreassen, E., & Lazarov, B. S. (2015). Topology optimization using PETSc: An easy-to-use, fully parallel, open source topology optimization framework. Structural and Multidisciplinary Optimization, 51(3), 565–572. https://doi.org/10.1007/s00158-014-1157-0
-
-Extensions: 
-===============
-An extension of the code including manufacturing filters/constraints can be found here:
-https://github.com/edofersan/MaximumSize_on_TopOpt_in_PETSc
+![Different problem](pic/02.jpg?raw=true "2D Extruded and 3D")
 
 
+## The Base-Code
+
+This code is based on the version 2017 of the TopOpt_in_PETSc code. The
+original code can be found here: https://github.com/topopt/TopOpt_in_PETSc 
+(Aage, N., Andreassen, E., & Lazarov, B. S. (2015). Topology optimization using PETSc: An easy-to-use, fully parallel, open source topology optimization framework. Structural and Multidisciplinary Optimization, 51(3), 565–572. https://doi.org/10.1007/s00158-014-1157-0)
+
+
+## The Code Overview
+
+![Code overview](pic/03.jpg?raw=true "Code Overview")
+
+The green are new added files and modules.
+
+
+## Compilation and Execution
+
+Compile following rules in makefile
+
+To compile, e.g.:make topopt
+
+To run, e.g.: mpiexec -np 4 ./topopt
+
+To visulize, using Paraview
+
+> **NOTE**: The code works with **PETSc version 3.9.0**
+
+
+## 3D Printing
+
+The optimized parts can be directly printed without any post-processing:
+
+![3D printing](pic/04.jpg?raw=true "3D Printed Parts")
 
