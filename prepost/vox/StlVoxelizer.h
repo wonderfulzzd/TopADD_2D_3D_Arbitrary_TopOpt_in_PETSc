@@ -140,7 +140,8 @@ class StlVoxelizer {
      * \param[out] surface voxelization - occupancy tensor
      * \return
      */
-    void Voxelize_surface (std::vector<int> &occ, unsigned int nx, unsigned int ny, unsigned int nz, float dx, float dy, float dz);
+    void Voxelize_surface (std::vector<int> &occ, unsigned int nx,
+        unsigned int ny, unsigned int nz, float dx, float dy, float dz);
 
     /**
      * Voxelize the solid domain based on the surface voxelization.
@@ -149,14 +150,16 @@ class StlVoxelizer {
      * \param[out] solid voxelization - occupancy tensor
      * \return
      */
-    void Voxelize_solid (std::vector<int> &occ, unsigned int nx, unsigned int ny, unsigned int nz);
+    void Voxelize_solid (std::vector<int> &occ, unsigned int nx,
+        unsigned int ny, unsigned int nz);
 
     /*
      * Bound adjust, scale and translate the vertices data
      * \param[out] background mesh info: element numbers and sizes
      * \return
      */
-    void ScaleAndTranslate (unsigned int nx, unsigned int ny, unsigned int nz, float dx, float dy, float dz);
+    void ScaleAndTranslate (unsigned int nx, unsigned int ny, unsigned int nz,
+        float dx, float dy, float dz);
 
     /*
      * Clean the occupancy data and free memory
@@ -243,9 +246,10 @@ class StlVoxelizer {
      * \param[out] solid vector
      * \return success
      */
-    bool ReadStlFile_BINARY (const char *filename, std::vector<Vector3f> &verticesOut, std::vector<
-                                 Vector3f> &normalsOut, std::vector<Vector3ui> &trisOut, std::vector<
-                                 unsigned int> &solidRangesOut);
+    bool ReadStlFile_BINARY (const char *filename,
+        std::vector<Vector3f> &verticesOut, std::vector<
+            Vector3f> &normalsOut, std::vector<Vector3ui> &trisOut, std::vector<
+            unsigned int> &solidRangesOut);
 
     /**
      * Reading an ascii stl file and returning the vertices x, y, z coordinates and
@@ -257,9 +261,10 @@ class StlVoxelizer {
      * \param[out] solid vector
      * \return success
      */
-    bool ReadStlFile_ASCII (const char *filename, std::vector<Vector3f> &verticesOut, std::vector<
-                                Vector3f> &normalsOut, std::vector<Vector3ui> &trisOut, std::vector<
-                                unsigned int> &solidRangesOut);
+    bool ReadStlFile_ASCII (const char *filename,
+        std::vector<Vector3f> &verticesOut, std::vector<
+            Vector3f> &normalsOut, std::vector<Vector3ui> &trisOut, std::vector<
+            unsigned int> &solidRangesOut);
 
     /**
      * Fill the buffer domain of the imported CAD
@@ -269,7 +274,8 @@ class StlVoxelizer {
      * \param[out] buffer tensor
      * \return
      */
-    void Fill_buffer (std::vector<int> &occ, unsigned int nx, unsigned int ny, unsigned int nz);
+    void Fill_buffer (std::vector<int> &occ, unsigned int nx, unsigned int ny,
+        unsigned int nz);
 
     /**
      * Voxelize the given mesh into an occupancy grid.
@@ -279,7 +285,8 @@ class StlVoxelizer {
      * \param[out] occupancy tensor
      * \return
      */
-    void Fill_solid (std::vector<int> &occ, unsigned int nx, unsigned int ny, unsigned int nz);
+    void Fill_solid (std::vector<int> &occ, unsigned int nx, unsigned int ny,
+        unsigned int nz);
 
     /**
      * Breath First Search (BFS) flood filling.
@@ -290,7 +297,9 @@ class StlVoxelizer {
      * \param[out] occupancy tensor
      * \return
      */
-    void BFS_flood_fill (std::vector<int> &occ, unsigned int nx, unsigned int ny, unsigned int nz, unsigned int x0, unsigned y0, unsigned z0);
+    void BFS_flood_fill (std::vector<int> &occ, unsigned int nx,
+        unsigned int ny, unsigned int nz, unsigned int x0, unsigned y0,
+        unsigned z0);
 
     /**
      * Translate the mesh.
@@ -329,6 +338,13 @@ class StlVoxelizer {
       for (int i = 0; i < 6; ++i) {
         bound[i] = 0.0;
       }
+      bound[0] = this->vertices[0].value[0];
+      bound[1] = this->vertices[0].value[0];
+      bound[2] = this->vertices[0].value[1];
+      bound[3] = this->vertices[0].value[1];
+      bound[4] = this->vertices[0].value[2];
+      bound[5] = this->vertices[0].value[2];
+
       // Find bound
       for (unsigned int v = 0; v < this->num_vertices (); ++v) {
         bound[0] = std::min (this->vertices[v].value[0], bound[0]);
@@ -349,7 +365,8 @@ class StlVoxelizer {
      * \param[in] v3 third vertex
      * \return success
      */
-    inline bool Triangle_box_intersection (const Vector3f &min, Vector3f &max, const Vector3f &v1, const Vector3f &v2, const Vector3f &v3);
+    inline bool Triangle_box_intersection (const Vector3f &min, Vector3f &max,
+        const Vector3f &v1, const Vector3f &v2, const Vector3f &v3);
 
     /**
      * Get the number of vertices.
