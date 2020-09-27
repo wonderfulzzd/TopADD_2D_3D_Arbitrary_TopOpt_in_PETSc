@@ -171,7 +171,8 @@ void StlVoxelizer::ScaleAndTranslate (unsigned int nx, unsigned int ny,
 
   if ((bound[5] - bound[4]) == 0) { // z direction dimension 0, meaning it is 2D model, otherwise 3D
     // Scaling
-    factor[0] = nx * dx / (bound[1] - bound[0]); // scale the CAD model of the  part to the prescribe domain size
+    factor[0] = std::min (nx * dx / (bound[1] - bound[0]),
+        ny * dy / (bound[3] - bound[2])); // scale the CAD model of the  part to the prescribe domain size
     factor[1] = factor[0];
     factor[2] = 1.0;
     Scale (factor);
