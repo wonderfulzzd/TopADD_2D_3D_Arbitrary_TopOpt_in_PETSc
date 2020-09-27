@@ -5,10 +5,10 @@
  */
 
 // Dimension
-#define DIM 3                 // 2-2D, 3-3D
+#define DIM 2                 // 2-2D, 3-3D
 
 // Import geometry or not
-#define IMPORT_GEO 0          // 0-Default geometries, 1-Imported CAD geometries
+#define IMPORT_GEO 1          // 0-Default geometries, 1-Imported CAD geometries
 
 // Physical problems to be studied
 #define PHYSICS 0       //0-Linear elasticity, 1-Compliant, 2-Heat conduction

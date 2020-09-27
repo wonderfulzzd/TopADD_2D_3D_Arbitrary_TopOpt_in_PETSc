@@ -66,7 +66,7 @@ def main(itr):
 	for i in range(nDom):
 		#Multiply by 8 because we have 8 nodes per element
                 #Multiply by 8 == length of unsigned long int
-		rawP += fin.read(8*8*nCellsT[i]) # Note: for 2D use "4*8", 3D use "8*8" because 2D has 4 nodes. 
+		rawP += fin.read(4*8*nCellsT[i]) # Note: for 2D use "4*8", 3D use "8*8" because 2D has 4 nodes. 
 	cvw.writeRawCellsConn(fout,rawP)
 	#print st.unpack('Q'*128*8,rawP[0:8*128*8])
 	

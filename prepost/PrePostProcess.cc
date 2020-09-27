@@ -12,7 +12,6 @@
 // the top level directory of TopOptVox.
 //
 // Author: Zhidong Brian Zhang
-// Created on: December 2018
 // Created on: September 2020
 // ---------------------------------------------------------------------
 
