@@ -148,7 +148,6 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
               vertices[3 * l + 1], vertices[3 * l + 2]);
           if (overlap) {
             occSUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
-            occ[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
           }
         }
       }
@@ -159,8 +158,8 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
 
 void StlVoxelizer::Voxelize_solid (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz) {
-//  Fill_buffer (nx, ny, nz);
-//  Fill_solid (occ, nx, ny, nz);
+  Fill_buffer (nx, ny, nz);
+  Fill_solid (occ, nx, ny, nz);
 }
 
 void StlVoxelizer::ScaleAndTranslate (unsigned int nx, unsigned int ny,
