@@ -27,10 +27,12 @@
  */
 
 // # modified
-Filter::Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPassive0, Vec xPassive1, Vec xPassive2) {
+Filter::Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin,
+    Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   // Set all pointers to NULL
   H = NULL;
   Hs = NULL;
+  dx = NULL; // # new added
   da_elem = NULL;
   pdef = NULL;
 
@@ -39,7 +41,7 @@ Filter::Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPass
   filterType = filterT;
 
   // Call the setup method
-  SetUp (da_nodes, x, xPassive0, xPassive1, xPassive2); // # modified
+  SetUp (da_nodes, x, xPassive0, xPassive1, xPassive2, xPassive3); // # modified
 }
 
 Filter::~Filter () {
@@ -62,7 +64,8 @@ Filter::~Filter () {
 }
 
 // Filter design variables
-PetscErrorCode Filter::FilterProject (Vec x, Vec xTilde, Vec xPhys, PetscBool projectionFilter, PetscScalar beta, PetscScalar eta) {
+PetscErrorCode Filter::FilterProject (Vec x, Vec xTilde, Vec xPhys,
+    PetscBool projectionFilter, PetscScalar beta, PetscScalar eta) {
   PetscErrorCode ierr;
 
   // Filter the design variables or copy to xPhys
@@ -85,15 +88,17 @@ PetscErrorCode Filter::FilterProject (Vec x, Vec xTilde, Vec xPhys, PetscBool pr
     for (PetscInt i = 0; i < locsiz; i++) {
       if (xp[i] < 0.0) {
         if (PetscAbsReal(xp[i]) > 1.0e-4) {
-          PetscPrintf (PETSC_COMM_WORLD, "BOUND VIOLATION IN PDEFILTER - INCREASE RMIN OR MESH "
-                       "RESOLUTION: xPhys = %f\n", xp[i]);
+          PetscPrintf (PETSC_COMM_WORLD,
+              "BOUND VIOLATION IN PDEFILTER - INCREASE RMIN OR MESH "
+                  "RESOLUTION: xPhys = %f\n", xp[i]);
         }
         xp[i] = 0.0;
       }
       if (xp[i] > 1.0) {
         if (PetscAbsReal(xp[i] - 1.0) > 1.0e-4) {
-          PetscPrintf (PETSC_COMM_WORLD, "BOUND VIOLATION IN PDEFILTER - INCREASE RMIN OR MESH "
-                       "RESOLUTION: xPhys = %f\n", xp[i]);
+          PetscPrintf (PETSC_COMM_WORLD,
+              "BOUND VIOLATION IN PDEFILTER - INCREASE RMIN OR MESH "
+                  "RESOLUTION: xPhys = %f\n", xp[i]);
         }
         xp[i] = 1.0;
       }
@@ -117,7 +122,8 @@ PetscErrorCode Filter::FilterProject (Vec x, Vec xTilde, Vec xPhys, PetscBool pr
 }
 
 // Filter the sensitivities
-PetscErrorCode Filter::Gradients (Vec x, Vec xTilde, Vec dfdx, PetscInt m, Vec *dgdx, PetscBool projectionFilter, PetscScalar beta, PetscScalar eta) {
+PetscErrorCode Filter::Gradients (Vec x, Vec xTilde, Vec dfdx, PetscInt m,
+    Vec *dgdx, PetscBool projectionFilter, PetscScalar beta, PetscScalar eta) {
 
   PetscErrorCode ierr = 0;
   // Cheinrule for projection filtering
@@ -164,8 +170,8 @@ PetscErrorCode Filter::Gradients (Vec x, Vec xTilde, Vec dfdx, PetscInt m, Vec *
 
   // Chainrule/Filter for the sensitivities
   if (filterType == 0)
-  // Filter the sensitivities, df,dg
-  {
+      // Filter the sensitivities, df,dg
+      {
     Vec xtmp;
     ierr = VecDuplicate (xTilde, &xtmp);
     CHKERRQ(ierr);
@@ -223,7 +229,8 @@ PetscScalar Filter::GetMND (Vec x) {
   return mnd;
 }
 
-PetscErrorCode Filter::HeavisideFilter (Vec y, Vec x, PetscReal beta, PetscReal eta) {
+PetscErrorCode Filter::HeavisideFilter (Vec y, Vec x, PetscReal beta,
+    PetscReal eta) {
   PetscErrorCode ierr;
 
   PetscScalar *yp, *xp;
@@ -244,7 +251,8 @@ PetscErrorCode Filter::HeavisideFilter (Vec y, Vec x, PetscReal beta, PetscReal 
   return ierr;
 }
 
-PetscErrorCode Filter::ChainruleHeavisideFilter (Vec y, Vec x, PetscReal beta, PetscReal eta) {
+PetscErrorCode Filter::ChainruleHeavisideFilter (Vec y, Vec x, PetscReal beta,
+    PetscReal eta) {
   PetscErrorCode ierr;
 
   PetscScalar *yp, *xp;
@@ -266,7 +274,8 @@ PetscErrorCode Filter::ChainruleHeavisideFilter (Vec y, Vec x, PetscReal beta, P
 }
 
 // Continuation function
-PetscBool Filter::IncreaseBeta (PetscReal *beta, PetscReal betaFinal, PetscScalar gx, PetscInt itr, PetscReal ch) {
+PetscBool Filter::IncreaseBeta (PetscReal *beta, PetscReal betaFinal,
+    PetscScalar gx, PetscInt itr, PetscReal ch) {
 
   PetscBool changeBeta = PETSC_FALSE;
 
@@ -288,7 +297,8 @@ PetscBool Filter::IncreaseBeta (PetscReal *beta, PetscReal betaFinal, PetscScala
   return changeBeta;
 }
 
-PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, Vec xPassive2) {
+PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1,
+    Vec xPassive2, Vec xPassive3) {
 
   PetscErrorCode ierr = 0;
 
@@ -301,7 +311,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     PetscInt M, N, md, nd;
     DMBoundaryType bx, by;
     DMDAStencilType stype;
-    ierr = DMDAGetInfo (da_nodes, NULL, &M, &N, NULL, &md, &nd, NULL, NULL, NULL, &bx, &by, NULL, &stype);
+    ierr = DMDAGetInfo (da_nodes, NULL, &M, &N, NULL, &md, &nd, NULL, NULL,
+        NULL, &bx, &by, NULL, &stype);
     CHKERRQ(ierr);
 
     // Find the element size
@@ -316,8 +327,10 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
 
     PetscScalar dx, dy;
     // Use the first element to compute the dx, dy
-    dx = lcoorp[DIM * necon[0 * nen + 1] + 0] - lcoorp[DIM * necon[0 * nen + 0] + 0];
-    dy = lcoorp[DIM * necon[0 * nen + 2] + 1] - lcoorp[DIM * necon[0 * nen + 1] + 1];
+    dx = lcoorp[DIM * necon[0 * nen + 1] + 0]
+        - lcoorp[DIM * necon[0 * nen + 0] + 0];
+    dy = lcoorp[DIM * necon[0 * nen + 2] + 1]
+        - lcoorp[DIM * necon[0 * nen + 1] + 1];
     VecRestoreArray (lcoor, &lcoorp);
 
     // Create the minimum element connectivity shit
@@ -332,7 +345,9 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     ElemConn = tmp;
 
     // Print to screen: mesh overlap!
-    PetscPrintf (PETSC_COMM_WORLD, "# Filter radius rmin = %f results in a stencil of %i elements \n", R, ElemConn);
+    PetscPrintf (PETSC_COMM_WORLD,
+        "# Filter radius rmin = %f results in a stencil of %i elements \n", R,
+        ElemConn);
 
     // Find the geometric partitioning of the nodal mesh, so the element mesh
     // will coincide
@@ -358,7 +373,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     }
 
     // Create the element grid:
-    DMDACreate2d (PETSC_COMM_WORLD, bx, by, stype, M - 1, N - 1, md, nd, 1, ElemConn, Lx, Ly, &da_elem);
+    DMDACreate2d (PETSC_COMM_WORLD, bx, by, stype, M - 1, N - 1, md, nd, 1,
+        ElemConn, Lx, Ly, &da_elem);
     // Initialize
     DMSetFromOptions (da_elem);
     DMSetUp (da_elem);
@@ -366,7 +382,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     // Set the coordinates: from 0+dx/2 to xmax-dx/2 and so on
     PetscScalar xmax = (M - 1) * dx;
     PetscScalar ymax = (N - 1) * dy;
-    DMDASetUniformCoordinates (da_elem, dx / 2.0, xmax - dx / 2.0, dy / 2.0, ymax - dy / 2.0, 0.0, 0.0);
+    DMDASetUniformCoordinates (da_elem, dx / 2.0, xmax - dx / 2.0, dy / 2.0,
+        ymax - dy / 2.0, 0.0, 0.0);
 
     // Allocate and assemble
     DMCreateMatrix (da_elem, &H);
@@ -412,7 +429,9 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
             // Compute the distance from the "col"-element to the
             // "row"-element
             for (PetscInt kk = 0; kk < 2; kk++) {
-              dist = dist + PetscPowScalar(lcoorp[2 * row + kk] - lcoorp[2 * col + kk], 2.0);
+              dist = dist
+                  + PetscPowScalar(lcoorp[2 * row + kk] - lcoorp[2 * col + kk],
+                      2.0);
             }
             dist = PetscSqrtScalar(dist);
             if (dist < R) {
@@ -427,8 +446,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
 
     // Exclude the non-designable domain from the distance matrix
     // Get pointer to the Petsc Vectors
-    PetscScalar **xPassive0p_2D, **xPassive1p_2D, **xPassive2p_2D;
-    Vec xPassive0loc, xPassive1loc, xPassive2loc;
+    PetscScalar **xPassive0p_2D, **xPassive1p_2D, **xPassive2p_2D, **xPassive3p_2D;
+    Vec xPassive0loc, xPassive1loc, xPassive2loc, xPassive3loc;
     DMCreateLocalVector (da_elem, &xPassive0loc);
     DMGlobalToLocalBegin (da_elem, xPassive0, INSERT_VALUES, xPassive0loc);
     DMGlobalToLocalEnd (da_elem, xPassive0, INSERT_VALUES, xPassive0loc);
@@ -441,12 +460,17 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     DMGlobalToLocalBegin (da_elem, xPassive2, INSERT_VALUES, xPassive2loc);
     DMGlobalToLocalEnd (da_elem, xPassive2, INSERT_VALUES, xPassive2loc);
     DMDAVecGetArray (da_elem, xPassive2loc, &xPassive2p_2D);
+    DMCreateLocalVector (da_elem, &xPassive3loc);
+    DMGlobalToLocalBegin (da_elem, xPassive3, INSERT_VALUES, xPassive3loc);
+    DMGlobalToLocalEnd (da_elem, xPassive3, INSERT_VALUES, xPassive3loc);
+    DMDAVecGetArray (da_elem, xPassive3loc, &xPassive3p_2D);
 
     PetscScalar dist;
     for (PetscInt j = info.ys; j < info.ys + info.ym; j++) {
       for (PetscInt i = info.xs; i < info.xs + info.xm; i++) {
 
-        if (xPassive0p_2D[j][i] != 0 || xPassive1p_2D[j][i] != 0 || xPassive2p_2D[j][i] != 0) {
+        if (xPassive0p_2D[j][i] == 1 || xPassive1p_2D[j][i] == 1
+            || xPassive2p_2D[j][i] == 1 || xPassive3p_2D[j][i] == 1) {
           PetscInt row = (i - info.gxs) + (j - info.gys) * (info.gxm);
           for (PetscInt j2 = PetscMax(j - info.sw, 0);
               j2 <= PetscMin(j + info.sw, info.my - 1); j2++) {
@@ -610,8 +634,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     // # new
     // Exclude the non-designable domain from the distance matrix
     // Get pointer to the Petsc Vectors
-    PetscScalar ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D;
-    Vec xPassive0loc, xPassive1loc, xPassive2loc;
+    PetscScalar ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D, ***xPassive3p_3D;
+    Vec xPassive0loc, xPassive1loc, xPassive2loc, xPassive3loc;
     DMCreateLocalVector (da_elem, &xPassive0loc);
     DMGlobalToLocalBegin (da_elem, xPassive0, INSERT_VALUES, xPassive0loc);
     DMGlobalToLocalEnd (da_elem, xPassive0, INSERT_VALUES, xPassive0loc);
@@ -624,12 +648,16 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     DMGlobalToLocalBegin (da_elem, xPassive2, INSERT_VALUES, xPassive2loc);
     DMGlobalToLocalEnd (da_elem, xPassive2, INSERT_VALUES, xPassive2loc);
     DMDAVecGetArray (da_elem, xPassive2loc, &xPassive2p_3D);
+    DMCreateLocalVector (da_elem, &xPassive3loc);
+    DMGlobalToLocalBegin (da_elem, xPassive3, INSERT_VALUES, xPassive3loc);
+    DMGlobalToLocalEnd (da_elem, xPassive3, INSERT_VALUES, xPassive3loc);
+    DMDAVecGetArray (da_elem, xPassive3loc, &xPassive3p_3D);
 
     PetscScalar dist;
     for (PetscInt k = info.zs; k < info.zs + info.zm; k++) {
       for (PetscInt j = info.ys; j < info.ys + info.ym; j++) {
         for (PetscInt i = info.xs; i < info.xs + info.xm; i++) {
-          if (xPassive0p_3D[k][j][i] != 0 || xPassive1p_3D[k][j][i] != 0 || xPassive2p_3D[k][j][i] != 0) {
+          if (xPassive0p_3D[k][j][i] == 1 || xPassive1p_3D[k][j][i] == 1 || xPassive2p_3D[k][j][i] == 1 || xPassive3p_3D[k][j][i] == 1) {
             PetscInt row = (i - info.gxs) + (j - info.gys) * (info.gxm) + (k - info.gzs) * (info.gxm) * (info.gym);
             for (PetscInt k2 = PetscMax(k - info.sw, 0);
                 k2 <= PetscMin(k + info.sw, info.mz - 1); k2++) {
@@ -673,6 +701,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     DMDAVecRestoreArray (da_elem, xPassive0loc, &xPassive0p_2D);
     DMDAVecRestoreArray (da_elem, xPassive1loc, &xPassive1p_2D);
     DMDAVecRestoreArray (da_elem, xPassive2loc, &xPassive2p_2D);
+    DMDAVecRestoreArray (da_elem, xPassive3loc, &xPassive3p_2D);
 #elif DIM == 3
     delete[] Lx;
     delete[] Ly;
@@ -680,6 +709,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
     DMDAVecRestoreArray (da_elem, xPassive0loc, &xPassive0p_3D);
     DMDAVecRestoreArray (da_elem, xPassive1loc, &xPassive1p_3D);
     DMDAVecRestoreArray (da_elem, xPassive2loc, &xPassive2p_3D);
+    DMDAVecRestoreArray (da_elem, xPassive3loc, &xPassive3p_3D);
 #endif
 
   } else if (filterType == 2) {
@@ -691,7 +721,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, 
 }
 
 #if DIM == 2    // # new
-PetscErrorCode Filter::DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]) {
+PetscErrorCode Filter::DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
+    const PetscInt *e[]) {
   PetscErrorCode ierr;
   DM_DA *da = (DM_DA*) dm->data;
   PetscInt i, xs, xe, Xs, Xe;

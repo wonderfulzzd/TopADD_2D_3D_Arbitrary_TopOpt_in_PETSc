@@ -46,6 +46,7 @@ class PrePostProcess {
     std::vector<int> occDES;
     std::vector<int> occFIX;
     std::vector<int> occLOD;
+    std::vector<int> occSLD;
 
     /*
      * Voxel index, the voxel one-dimensional index

@@ -29,7 +29,7 @@ class LinearCompliant {
   public:
     // Constructor
     LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2); //new
+        Vec xPassive1, Vec xPassive2, Vec xPassive3); //new
 
     // Destructor
     ~LinearCompliant ();
@@ -39,7 +39,7 @@ class LinearCompliant {
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
         PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2);
+        Vec xPassive1, Vec xPassive2, Vec xPassive3);
 
     // Restart writer
     PetscErrorCode WriteRestartFiles ();
@@ -94,7 +94,7 @@ class LinearCompliant {
 
     // Update the load and boundary conditions
     PetscErrorCode SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
-        Vec xPassive2, PetscInt loadStep); //new
+        Vec xPassive2, Vec xPassive3, PetscInt loadStep); //new
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,

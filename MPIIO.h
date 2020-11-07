@@ -47,7 +47,7 @@ class MPIIO {
 
     // NOT CLEAN INTERFACE: REPLACE BY STD::PAIR OR SUCH !!!!!!
     PetscErrorCode WriteVTK (DM da_nodes, Vec U, Vec nodeDen, Vec x,
-        Vec xTilde, Vec xPhys, Vec xPassive0, Vec xPassive1, Vec xPassive2,
+        Vec xTilde, Vec xPhys, Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3,
         PetscInt itr);  // # modified
 
   private:

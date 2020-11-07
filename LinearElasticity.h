@@ -29,7 +29,7 @@ class LinearElasticity {
   public:
     // Constructor
     LinearElasticity (DM da_nodes, PetscInt numLoads, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2); //zzd
+        Vec xPassive1, Vec xPassive2, Vec xPassive3); //zzd
 
     // Destructor
     ~LinearElasticity ();
@@ -39,7 +39,7 @@ class LinearElasticity {
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
         PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2);  // # modified
+        Vec xPassive1, Vec xPassive2, Vec xPassive3);  // # modified
 
     // Compute objective and constraints for the optimiation
     PetscErrorCode ComputeObjectiveConstraints (PetscScalar *fx,
@@ -95,7 +95,7 @@ class LinearElasticity {
 
     // Set up the FE mesh and data structures
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
-        Vec xPassive2); // # modified
+        Vec xPassive2, Vec xPassive3); // # modified
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,

@@ -58,7 +58,7 @@ int main (int argc, char *argv[]) {
   // 0 - linear elasticity, 1 - linear heat conduction, 2 - compliant
 #if PHYSICS == 0
   LinearElasticity *physics = new LinearElasticity (opt->da_nodes,
-      opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2);
+      opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);
 #elif PHYSICS ==1
   LinearCompliant *physics = new LinearCompliant (opt->da_nodes, opt->numLoads,
       opt->xPassive0, opt->xPassive1, opt->xPassive2);   // # new
@@ -70,11 +70,11 @@ int main (int argc, char *argv[]) {
 
   // STEP 4: THE FILTERING
   Filter *filter = new Filter (opt->da_nodes, opt->xPhys, opt->filter,
-      opt->rmin, opt->xPassive0, opt->xPassive1, opt->xPassive2);    // # modified
+      opt->rmin, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);    // # modified
 
   // STEP 5: VISUALIZATION USING VTK
-  MPIIO *output = new MPIIO (opt->da_nodes, 4, "ux, uy, uz, nodeDen", 6,
-      "x, xTilde, xPhys, xPassive0, xPassive1, xPassive2"); // # modified; all point data must use 3 coordinates in VTK
+  MPIIO *output = new MPIIO (opt->da_nodes, 4, "ux, uy, uz, nodeDen", 7,
+      "x, xTilde, xPhys, xPassive0, xPassive1, xPassive2, xPassive3"); // # modified; all point data must use 3 coordinates in VTK
 
   // STEP 6: THE OPTIMIZER MMA
   MMA *mma;
@@ -101,7 +101,7 @@ int main (int argc, char *argv[]) {
     ierr = physics->ComputeObjectiveConstraintsSensitivities (&(opt->fx),
         &(opt->gx[0]), opt->dfdx, opt->dgdx[0], opt->xPhys, opt->Emin,
         opt->Emax, opt->penal, opt->volfrac, opt->xPassive0, opt->xPassive1,
-        opt->xPassive2);    // # new
+        opt->xPassive2, opt->xPassive3);    // # new
     CHKERRQ(ierr);
 
     // Compute objective scale
@@ -159,7 +159,7 @@ int main (int argc, char *argv[]) {
       prepost->UpdateNodeDensity (opt); // # new; update node density
       output->WriteVTK (physics->da_nodal, physics->GetStateField (),
           opt->nodeDensity, opt->x, opt->xTilde, opt->xPhys, opt->xPassive0,
-          opt->xPassive1, opt->xPassive2, itr); // # modified
+          opt->xPassive1, opt->xPassive2, opt->xPassive3, itr); // # modified
     }
 
     // Dump data needed for restarting code at termination
@@ -175,7 +175,7 @@ int main (int argc, char *argv[]) {
   // Dump final design
   output->WriteVTK (physics->da_nodal, physics->GetStateField (),
       opt->nodeDensity, opt->x, opt->xTilde, opt->xPhys, opt->xPassive0,
-      opt->xPassive1, opt->xPassive2, itr); // # modified
+      opt->xPassive1, opt->xPassive2, opt->xPassive3, itr); // # modified
 
   // STEP 9: CLEAN UP AFTER YOURSELF
   delete mma;

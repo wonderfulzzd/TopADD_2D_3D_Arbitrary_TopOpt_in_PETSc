@@ -14,7 +14,7 @@
  */
 
 LinearCompliant::LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
-    Vec xPassive1, Vec xPassive2) {
+    Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   // Set pointers to null
   K = NULL;
   U = NULL;
@@ -230,7 +230,7 @@ PetscErrorCode LinearCompliant::SetUpDMDA (DM da_nodes) {
 }
 
 PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
-    Vec xPassive2, PetscInt loadStep) {
+    Vec xPassive2, Vec xPassive3, PetscInt loadStep) {
   PetscErrorCode ierr = 0;
 
 #if  DIM ==2
@@ -254,10 +254,11 @@ PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
   // Compute epsilon parameter for finding points in space:
   PetscScalar epsi = PetscMin(dx * 0.05, dy * 0.05);
   // Passive design variable vector
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (xPassive0, &xPassive0p);
   VecGetArray (xPassive1, &xPassive1p);
   VecGetArray (xPassive2, &xPassive2p);
+  VecGetArray (xPassive3, &xPassive3p);
 
   // Set the RHS and Dirichlet vector
   VecSet (N, 1.0);
@@ -388,10 +389,11 @@ PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
   PetscScalar epsi = PetscMin(dx * 0.05, PetscMin(dy * 0.05, dz * 0.05));
 
   // Passive design variable vector
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (xPassive0, &xPassive0p);
   VecGetArray (xPassive1, &xPassive1p);
   VecGetArray (xPassive2, &xPassive2p);
+  VecGetArray (xPassive3, &xPassive3p);
 
   // Set the local RHS and Dirichlet vector
 //  PetscScalar rhs_ele[24]; // local rhs
@@ -527,6 +529,7 @@ PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
   VecRestoreArray (xPassive0, &xPassive0p);
   VecRestoreArray (xPassive1, &xPassive1p);
   VecRestoreArray (xPassive2, &xPassive2p);
+  VecRestoreArray (xPassive3, &xPassive3p);
 
   return ierr;
 }
@@ -578,13 +581,13 @@ PetscErrorCode LinearCompliant::SolveState (Vec xPhys, PetscScalar Emin,
 PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
     PetscScalar *fx, PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys,
     PetscScalar Emin, PetscScalar Emax, PetscScalar penal, PetscScalar volfrac,
-    Vec xPassive0, Vec xPassive1, Vec xPassive2) {
+    Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   // Errorcode
   PetscErrorCode ierr;
 
   // Solve state eqs
   for (int i = 0; i < nl; ++i) { // loop over number of loads
-    ierr = SetUpLoadAndBC (xPassive0, xPassive1, xPassive2, i);
+    ierr = SetUpLoadAndBC (xPassive0, xPassive1, xPassive2, xPassive3, i);
     ierr = SolveState (xPhys, Emin, Emax, penal, i);
     CHKERRQ(ierr);
   }
@@ -603,11 +606,12 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
 // change !
 
   // Get pointer to the densities
-  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p;
+  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (xPhys, &xp);
   VecGetArray (xPassive0, &xPassive0p);
   VecGetArray (xPassive1, &xPassive1p);
   VecGetArray (xPassive2, &xPassive2p);
+  VecGetArray (xPassive3, &xPassive3p);
 
   // Get Solution
   Vec Uloctmp, *Uloc;
@@ -641,7 +645,8 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   // Loop over elements, zzd
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
-    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0) {
+    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0
+        && xPassive3p[i] == 0) {
 
       for (PetscInt j = 0; j < nen; j++) {
         // Get local dofs
@@ -668,7 +673,7 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
       df[i] = penal * PetscPowScalar(xp[i], penal - 1) * (Emax - Emin) * uKu;
     } else if (xPassive0p[i] == 1) {
       df[i] = 1.0E9;
-    } else if (xPassive1p[i] == 1 || xPassive2p[i] == 1) {
+    } else if (xPassive1p[i] == 1 || xPassive2p[i] == 1 || xPassive3p[i] == 1) {
       df[i] = -1.0E9;
     }
   }
@@ -679,7 +684,7 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   MPI_Allreduce(&tmp, &(fx[0]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
 
   // Get mash vectors to exclude the non design domain from dgdx (no better way?) zzd newly added
-  Vec tmpVec0, tmpVec1, tmpVec2;
+  Vec tmpVec0, tmpVec1, tmpVec2, tmpVec3;
   VecDuplicate (dgdx, &tmpVec0);
   VecCopy (xPassive0, tmpVec0);
   VecShift (tmpVec0, -1);
@@ -692,6 +697,10 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   VecCopy (xPassive2, tmpVec2);
   VecShift (tmpVec2, -1);
   VecScale (tmpVec2, -1);
+  VecDuplicate (dgdx, &tmpVec3);
+  VecCopy (xPassive3, tmpVec3);
+  VecShift (tmpVec3, -1);
+  VecScale (tmpVec3, -1);
 
   // Get tmp xPhys, excluding all non design domain
   Vec tmpxPhys;
@@ -700,29 +709,33 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec0);
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec1);
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec2);
+  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec3);
 
   // Compute volume constraint gx[0]
-  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2; // zzd newly added
+  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2, nNonDesign3; // zzd newly added
   VecSum (xPassive0, &nNonDesign0); // zzd newly added
   VecSum (xPassive1, &nNonDesign1); // zzd newly added
   VecSum (xPassive2, &nNonDesign2); // zzd newly added
+  VecSum (xPassive3, &nNonDesign3); // zzd newly added
   PetscInt neltot;
   VecGetSize (tmpxPhys, &neltot);
   gx[0] = 0;
   VecSum (tmpxPhys, &(gx[0]));
   gx[0] = gx[0]
-      / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2)
+      / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3)
           - volfrac;
   VecSet (dgdx,
-      1.0 / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2));
+      1.0 / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3));
   VecPointwiseMult (dgdx, dgdx, tmpVec0);
   VecPointwiseMult (dgdx, dgdx, tmpVec1);
   VecPointwiseMult (dgdx, dgdx, tmpVec2);
+  VecPointwiseMult (dgdx, dgdx, tmpVec3);
 
   VecRestoreArray (xPhys, &xp);
-  VecGetArray (xPassive0, &xPassive0p);
-  VecGetArray (xPassive1, &xPassive1p);
-  VecGetArray (xPassive2, &xPassive2p);
+  VecRestoreArray (xPassive0, &xPassive0p);
+  VecRestoreArray (xPassive1, &xPassive1p);
+  VecRestoreArray (xPassive2, &xPassive2p);
+  VecRestoreArray (xPassive3, &xPassive3p);
   VecRestoreArrays (Uloc, nl, &up);
   VecRestoreArray (dfdx, &df);
   VecDestroyVecs (nl, &Uloc);
@@ -733,6 +746,7 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   VecDestroy (&tmpVec0);
   VecDestroy (&tmpVec1);
   VecDestroy (&tmpVec2);
+  VecDestroy (&tmpVec3);
   VecDestroy (&tmpxPhys);
 
   return (ierr);

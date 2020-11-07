@@ -29,7 +29,7 @@ class LinearHeatConduction {
   public:
     // Constructor
     LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt numLoads,
-        Vec xPassive0, Vec xPassive1, Vec xPassive2); //new
+        Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3); //new
 
     // Destructor
     ~LinearHeatConduction ();
@@ -39,7 +39,7 @@ class LinearHeatConduction {
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
         PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac,
-        Vec xPassive0, Vec xPassive1, Vec xPassive2);
+        Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3);
 
     // Restart writer
     PetscErrorCode WriteRestartFiles ();
@@ -95,7 +95,7 @@ class LinearHeatConduction {
 
     // Set up the FE mesh and data structures
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, DM da_elem, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2); //new
+        Vec xPassive1, Vec xPassive2, Vec xPassive3); //new
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,

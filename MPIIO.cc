@@ -192,7 +192,7 @@ MPIIO::~MPIIO () {
   delete[] nCFields;
 }
 
-PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec xTilde, Vec xPhys, Vec xPassive0, Vec xPassive1,Vec xPassive2, PetscInt itr) {
+PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec xTilde, Vec xPhys, Vec xPassive0, Vec xPassive1,Vec xPassive2, Vec xPassive3, PetscInt itr) {
 
   // Here we only have one "timestep" (no optimization)
   unsigned long int timestep = itr;
@@ -275,10 +275,11 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
   VecGetArray (x, &xp);
   VecGetArray (xTilde, &xt);
   VecGetArray (xPhys, &xpp);
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;  // # new
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;  // # new
   VecGetArray (xPassive0, &xPassive0p);  // # new
   VecGetArray (xPassive1, &xPassive1p);  // # new
   VecGetArray (xPassive2, &xPassive2p);  // # new
+  VecGetArray (xPassive3, &xPassive3p);  // # new
 
   for (unsigned long int i = 0; i < nCellsMyrank[0]; i++) { // 2D/3D use the same code for cell field
     // Density
@@ -288,6 +289,7 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
     workCellField[i + 3 * nCellsMyrank[0]] = float (xPassive0p[i]);  // # new
     workCellField[i + 4 * nCellsMyrank[0]] = float (xPassive1p[i]);  // # new
     workCellField[i + 5 * nCellsMyrank[0]] = float (xPassive2p[i]);  // # new
+    workCellField[i + 6 * nCellsMyrank[0]] = float (xPassive3p[i]);  // # new
   }
   writeCellFields (0, workCellField);
 
@@ -298,6 +300,7 @@ PetscErrorCode MPIIO::WriteVTK (DM da_nodes, Vec U, Vec nodeDensity, Vec x, Vec 
   VecRestoreArray (xPassive0, &xPassive0p); // # new
   VecRestoreArray (xPassive1, &xPassive1p); // # new
   VecRestoreArray (xPassive2, &xPassive2p); // # new
+  VecRestoreArray (xPassive3, &xPassive3p); // # new
 
   // clean up
   ierr = VecDestroy (&Ulocal);

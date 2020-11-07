@@ -14,7 +14,7 @@
  */
 
 LinearElasticity::LinearElasticity (DM da_nodes, PetscInt numLoads,
-    Vec xPassive0, Vec xPassive1, Vec xPassive2) { // # modified
+    Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) { // # modified
   // Set pointers to null
   K = NULL;
   U = NULL;
@@ -34,7 +34,7 @@ LinearElasticity::LinearElasticity (DM da_nodes, PetscInt numLoads,
 
   // Setup sitffness matrix, load vector and bcs (Dirichlet) for the design
   // problem
-  SetUpLoadAndBC (da_nodes, xPassive0, xPassive1, xPassive2);
+  SetUpLoadAndBC (da_nodes, xPassive0, xPassive1, xPassive2, xPassive3);
 }
 
 LinearElasticity::~LinearElasticity () {
@@ -51,7 +51,7 @@ LinearElasticity::~LinearElasticity () {
 }
 
 PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
-    Vec xPassive1, Vec xPassive2) {
+    Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   PetscErrorCode ierr = 0;
 
 #if DIM == 2  // # new
@@ -148,10 +148,11 @@ PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
   // Compute epsilon parameter for finding points in space:
   PetscScalar epsi = PetscMin(dx * 0.05, dy * 0.05);
   // Passive design variable vector
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (xPassive0, &xPassive0p);
   VecGetArray (xPassive1, &xPassive1p);
   VecGetArray (xPassive2, &xPassive2p);
+  VecGetArray (xPassive3, &xPassive3p);
 
   // Set the RHS and Dirichlet vector
   VecSet (N, 1.0);
@@ -325,10 +326,11 @@ PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
   PetscScalar epsi = PetscMin(dx * 0.05, PetscMin(dy * 0.05, dz * 0.05));
 
   // # new; Passive design variable vector
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p;
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (xPassive0, &xPassive0p);
   VecGetArray (xPassive1, &xPassive1p);
   VecGetArray (xPassive2, &xPassive2p);
+  VecGetArray (xPassive3, &xPassive3p);
 
   // # new; Set the local RHS and Dirichlet vector
   PetscScalar rhs_ele[24]; // local rhs
@@ -427,6 +429,7 @@ PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
   VecRestoreArray (xPassive0, &xPassive0p); // # new
   VecRestoreArray (xPassive1, &xPassive1p); // # new
   VecRestoreArray (xPassive2, &xPassive2p); // # new
+  VecRestoreArray (xPassive3, &xPassive3p); // # new
 
   return ierr;
 }
@@ -628,7 +631,7 @@ PetscErrorCode LinearElasticity::ComputeSensitivities (Vec dfdx, Vec dgdx,
 PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
     PetscScalar *fx, PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys,
     PetscScalar Emin, PetscScalar Emax, PetscScalar penal, PetscScalar volfrac,
-    Vec xPassive0, Vec xPassive1, Vec xPassive2) { // # modified
+    Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) { // # modified
   // Errorcode
   PetscErrorCode ierr;
 
@@ -650,11 +653,12 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
   // change !
 
   // Get pointer to the densities
-  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p; // # modified
+  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p; // # modified
   VecGetArray (xPhys, &xp);
   VecGetArray (xPassive0, &xPassive0p); // # new
   VecGetArray (xPassive1, &xPassive1p); // # new
   VecGetArray (xPassive2, &xPassive2p); // # new
+  VecGetArray (xPassive3, &xPassive3p); // # new
 
   // Get Solution
   Vec Uloc;
@@ -677,7 +681,7 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
   // # modified; Loop over elements
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
-    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0) {
+    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0 && xPassive3p[i] == 0) {
 
       for (PetscInt j = 0; j < nen; j++) {
         // Get local dofs
@@ -699,7 +703,7 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
               * uKu;
     } else if (xPassive0p[i] == 1) { // # new
       df[i] = 1.0E9; // # new
-    } else if (xPassive1p[i] == 1 || xPassive2p[i] == 1) { // # new
+    } else if (xPassive1p[i] == 1 || xPassive2p[i] == 1 || xPassive3p[i] == 1) { // # new
       df[i] = -1.0E9; // # new
     }
   }
@@ -710,7 +714,7 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
   MPI_Allreduce(&tmp, &(fx[0]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
 
   // # new; Get mash vectors to exclude the non design domain from dgdx (no better way?) zzd newly added
-  Vec tmpVec0, tmpVec1, tmpVec2;
+  Vec tmpVec0, tmpVec1, tmpVec2, tmpVec3;
   VecDuplicate (dgdx, &tmpVec0);
   VecCopy (xPassive0, tmpVec0);
   VecShift (tmpVec0, -1);
@@ -723,6 +727,10 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
   VecCopy (xPassive2, tmpVec2);
   VecShift (tmpVec2, -1);
   VecScale (tmpVec2, -1);
+  VecDuplicate (dgdx, &tmpVec3);
+  VecCopy (xPassive3, tmpVec3);
+  VecShift (tmpVec3, -1);
+  VecScale (tmpVec3, -1);
 
   // # new; Get tmp xPhys, excluding all non design domain
   Vec tmpxPhys;
@@ -731,29 +739,33 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec0);
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec1);
   VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec2);
+  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec3);
 
   // Compute volume constraint gx[0]
-  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2; // # new
+  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2, nNonDesign3; // # new
   VecSum (xPassive0, &nNonDesign0); // # new
   VecSum (xPassive1, &nNonDesign1); // # new
   VecSum (xPassive2, &nNonDesign2); // # new
+  VecSum (xPassive3, &nNonDesign3); // # new
   PetscInt neltot;
   VecGetSize (tmpxPhys, &neltot); // # modified
   gx[0] = 0;
   VecSum (tmpxPhys, &(gx[0])); // # modified
   gx[0] = gx[0]
-          / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2)
+          / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3)
           - volfrac; // # modified
   VecSet (dgdx,
-      1.0 / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2)); // # modified
+      1.0 / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3)); // # modified
   VecPointwiseMult (dgdx, dgdx, tmpVec0); // # new
   VecPointwiseMult (dgdx, dgdx, tmpVec1); // # new
   VecPointwiseMult (dgdx, dgdx, tmpVec2); // # new
+  VecPointwiseMult (dgdx, dgdx, tmpVec3); // # new
 
   VecRestoreArray (xPhys, &xp);
-  VecGetArray (xPassive0, &xPassive0p); // # new
-  VecGetArray (xPassive1, &xPassive1p); // # new
-  VecGetArray (xPassive2, &xPassive2p); // # new
+  VecRestoreArray (xPassive0, &xPassive0p); // # new
+  VecRestoreArray (xPassive1, &xPassive1p); // # new
+  VecRestoreArray (xPassive2, &xPassive2p); // # new
+  VecRestoreArray (xPassive3, &xPassive3p); // # new
   VecRestoreArray (Uloc, &up);
   VecRestoreArray (dfdx, &df);
   VecDestroy (&Uloc);
@@ -761,6 +773,7 @@ PetscErrorCode LinearElasticity::ComputeObjectiveConstraintsSensitivities (
   VecDestroy (&tmpVec0); // # new
   VecDestroy (&tmpVec1); // # new
   VecDestroy (&tmpVec2); // # new
+  VecDestroy (&tmpVec3); // # new
   VecDestroy (&tmpxPhys); // # new
 
   return (ierr);

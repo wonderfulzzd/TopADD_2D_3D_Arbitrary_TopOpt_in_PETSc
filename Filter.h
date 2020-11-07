@@ -41,19 +41,24 @@ class Filter {
 
   public:
     // Constructor
-    Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin, Vec xPassive0, Vec xPassive1, Vec xPassive2); // # modified
+    Filter (DM da_nodes, Vec x, PetscInt filterT, PetscScalar Rin,
+        Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
 
     // Destructor
     ~Filter ();
 
     // Filter design variables
-    PetscErrorCode FilterProject (Vec x, Vec xTilde, Vec xPhys, PetscBool projectionFilter, PetscScalar beta, PetscScalar eta);
+    PetscErrorCode FilterProject (Vec x, Vec xTilde, Vec xPhys,
+        PetscBool projectionFilter, PetscScalar beta, PetscScalar eta);
 
     // Filter the sensitivities
-    PetscErrorCode Gradients (Vec x, Vec xTilde, Vec dfdx, PetscInt m, Vec *dgdx, PetscBool projectionFilter, PetscScalar beta, PetscScalar eta);
+    PetscErrorCode Gradients (Vec x, Vec xTilde, Vec dfdx, PetscInt m,
+        Vec *dgdx, PetscBool projectionFilter, PetscScalar beta,
+        PetscScalar eta);
 
     // COntinuation for projection filter
-    PetscBool IncreaseBeta (PetscReal *beta, PetscReal betaFinal, PetscScalar gx, PetscInt itr, PetscReal ch);
+    PetscBool IncreaseBeta (PetscReal *beta, PetscReal betaFinal,
+        PetscScalar gx, PetscInt itr, PetscReal ch);
 
     // Measure of non-discreteness
     PetscScalar GetMND (Vec x);
@@ -74,28 +79,36 @@ class Filter {
     PDEFilt *pdef; // PDE filter class
 
     // Setup datastructures for the filter
-    PetscErrorCode SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1, Vec xPassive2); // # new
+    PetscErrorCode SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1,
+        Vec xPassive2, Vec xPassive3); // # new
 
     // Projection
-    PetscErrorCode HeavisideFilter (Vec x, Vec y, PetscReal beta, PetscReal eta);
-    PetscErrorCode ChainruleHeavisideFilter (Vec y, Vec x, PetscReal beta, PetscReal eta);
+    PetscErrorCode HeavisideFilter (Vec x, Vec y, PetscReal beta,
+        PetscReal eta);
+    PetscErrorCode ChainruleHeavisideFilter (Vec y, Vec x, PetscReal beta,
+        PetscReal eta);
 
     // The HS projection
-    inline PetscReal SmoothProjection (PetscReal x, PetscReal beta, PetscReal eta) {
-      PetscReal y = (tanh (beta * eta) + tanh (beta * (x - eta))) / (tanh (beta * eta) + tanh (beta * (1.0 - eta)));
+    inline PetscReal SmoothProjection (PetscReal x, PetscReal beta,
+        PetscReal eta) {
+      PetscReal y = (tanh (beta * eta) + tanh (beta * (x - eta)))
+          / (tanh (beta * eta) + tanh (beta * (1.0 - eta)));
       return y;
     }
     ;
     // Chainrule contribution
-    inline PetscReal ChainruleSmoothProjection (PetscReal x, PetscReal beta, PetscReal eta) {
-      PetscReal dx = beta * (1.0 - pow (tanh (beta * (x - eta)), 2.0)) / (tanh (beta * eta) + tanh (beta * (1.0 - eta)));
+    inline PetscReal ChainruleSmoothProjection (PetscReal x, PetscReal beta,
+        PetscReal eta) {
+      PetscReal dx = beta * (1.0 - pow (tanh (beta * (x - eta)), 2.0))
+          / (tanh (beta * eta) + tanh (beta * (1.0 - eta)));
       return dx;
     }
     ;
 
     // Routine that doesn't change the element type upon repeated calls
 #if DIM == 2   // # new
-    PetscErrorCode DMDAGetElements_2D(DM dm, PetscInt* nel, PetscInt* nen, const PetscInt* e[]);
+    PetscErrorCode DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
+        const PetscInt *e[]);
 #elif DIM == 3
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen, const PetscInt *e[]);
 #endif

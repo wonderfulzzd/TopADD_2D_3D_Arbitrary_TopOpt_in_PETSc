@@ -95,11 +95,12 @@ PetscErrorCode PrePostProcess::UpdateNodeDensity (TopOpt *opt) {
   // change !
 
   // Get pointer to the densities
-  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p;
+  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (opt->xPhys, &xp);
   VecGetArray (opt->xPassive0, &xPassive0p);
   VecGetArray (opt->xPassive1, &xPassive1p);
   VecGetArray (opt->xPassive2, &xPassive2p);
+  VecGetArray (opt->xPassive3, &xPassive3p);
 
   // Edof array, new
   PetscInt edof[nen];
@@ -107,7 +108,8 @@ PetscErrorCode PrePostProcess::UpdateNodeDensity (TopOpt *opt) {
   // Loop over elements
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
-    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0) {
+    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0
+        && xPassive3p[i] == 0) {
       memset (eNodeDensity, 0.0, sizeof(eNodeDensity[0]) * nen);
       for (PetscInt j = 0; j < nen; j++) {
         eNodeDensity[j] = xp[i];
@@ -216,6 +218,22 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
         opt->inputSTL_LOD[0].c_str ());
   }
 
+  // Non-designable solid domain voxelization
+  if (!opt->inputSTL_SLD[0].empty ()) {
+    t1 = MPI_Wtime ();
+    sv->Voxelize_surface (occSLD, nx, ny, nz, dx, dy, dz);
+    t2 = MPI_Wtime ();
+    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of SLD surface took: %f s\n",
+        t2 - t1);
+    t1 = MPI_Wtime ();
+    sv->Voxelize_solid (occSLD, nx, ny, nz);
+    t2 = MPI_Wtime ();
+    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of SLD solid took: %f s\n",
+        t2 - t1);
+    PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
+        opt->inputSTL_SLD[0].c_str ());
+  }
+
   // Clean up the voxelizer class
   sv->CleanUp ();
   delete sv;
@@ -247,10 +265,11 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
 
 #if DIM == 2
   // Get pointer to the densities and xpassive index vec
-  PetscScalar **xp_2D, **xPassive0p_2D, **xPassive1p_2D, **xPassive2p_2D;
+  PetscScalar **xp_2D, **xPassive0p_2D, **xPassive1p_2D, **xPassive2p_2D,
+      **xPassive3p_2D;
 
   // Local vector of the global x and xPassive vectors
-  Vec xloc, xPassive0loc, xPassive1loc, xPassive2loc;
+  Vec xloc, xPassive0loc, xPassive1loc, xPassive2loc, xPassive3loc;
   DMCreateLocalVector (opt->da_elem, &xloc);
   DMGlobalToLocalBegin (opt->da_elem, opt->x, INSERT_VALUES, xloc);
   DMGlobalToLocalEnd (opt->da_elem, opt->x, INSERT_VALUES, xloc);
@@ -266,14 +285,20 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
       xPassive1loc);
   DMCreateLocalVector (opt->da_elem, &xPassive2loc);
   DMGlobalToLocalBegin (opt->da_elem, opt->xPassive2, INSERT_VALUES,
-      xPassive1loc);
+      xPassive2loc);
   DMGlobalToLocalEnd (opt->da_elem, opt->xPassive2, INSERT_VALUES,
-      xPassive1loc);
+      xPassive2loc);
+  DMCreateLocalVector (opt->da_elem, &xPassive3loc);
+  DMGlobalToLocalBegin (opt->da_elem, opt->xPassive3, INSERT_VALUES,
+      xPassive3loc);
+  DMGlobalToLocalEnd (opt->da_elem, opt->xPassive3, INSERT_VALUES,
+      xPassive3loc);
 
   DMDAVecGetArray (opt->da_elem, xloc, &xp_2D);
   DMDAVecGetArray (opt->da_elem, xPassive0loc, &xPassive0p_2D);
   DMDAVecGetArray (opt->da_elem, xPassive1loc, &xPassive1p_2D);
   DMDAVecGetArray (opt->da_elem, xPassive2loc, &xPassive2p_2D);
+  DMDAVecGetArray (opt->da_elem, xPassive3loc, &xPassive3p_2D);
 
   PetscInt xs, xe, Xs, Xe;
   PetscInt ys, ye, Ys, Ye;
@@ -299,13 +324,16 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
           xPassive0p_2D[j][i] = 0;
           xPassive1p_2D[j][i] = 0;
           xPassive2p_2D[j][i] = 0;
+          xPassive3p_2D[j][i] = 0;
         } else {
           xp_2D[j][i] = 0.0;
           xPassive0p_2D[j][i] = 1;
           xPassive1p_2D[j][i] = 0;
           xPassive2p_2D[j][i] = 0;
+          xPassive3p_2D[j][i] = 0;
         }
       }
+
       if (!opt->inputSTL_FIX[0].empty ()) {
         occTmp = occFIX[voxIndex / BATCH];
         if ((occTmp >> (voxIndex % BATCH)) & 1) {
@@ -313,6 +341,7 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
           xPassive0p_2D[j][i] = 0;
           xPassive1p_2D[j][i] = 1;
           xPassive2p_2D[j][i] = 0;
+          xPassive3p_2D[j][i] = 0;
         }
       }
 
@@ -323,6 +352,18 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
           xPassive0p_2D[j][i] = 0;
           xPassive1p_2D[j][i] = 0;
           xPassive2p_2D[j][i] = 1;
+          xPassive3p_2D[j][i] = 0;
+        }
+      }
+
+      if (!opt->inputSTL_SLD[0].empty ()) {
+        occTmp = occSLD[voxIndex / BATCH];
+        if ((occTmp >> (voxIndex % BATCH)) & 1) {
+          xp_2D[j][i] = 1.0;
+          xPassive0p_2D[j][i] = 0;
+          xPassive1p_2D[j][i] = 0;
+          xPassive2p_2D[j][i] = 0;
+          xPassive3p_2D[j][i] = 1;
         }
       }
     }
@@ -343,18 +384,23 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
       opt->xPassive2);
   DMLocalToGlobalEnd (opt->da_elem, xPassive2loc, INSERT_VALUES,
       opt->xPassive2);
+  DMLocalToGlobalBegin (opt->da_elem, xPassive3loc, INSERT_VALUES,
+      opt->xPassive2);
+  DMLocalToGlobalEnd (opt->da_elem, xPassive3loc, INSERT_VALUES,
+      opt->xPassive2);
 
   DMDAVecRestoreArray (opt->da_elem, xloc, &xp_2D);
   DMDAVecRestoreArray (opt->da_elem, xPassive0loc, &xPassive0p_2D);
   DMDAVecRestoreArray (opt->da_elem, xPassive1loc, &xPassive1p_2D);
   DMDAVecRestoreArray (opt->da_elem, xPassive2loc, &xPassive2p_2D);
+  DMDAVecRestoreArray (opt->da_elem, xPassive3loc, &xPassive3p_2D);
 
 #elif DIM ==3
   // Get pointer to the densities and xpassive index vec
-  PetscScalar ***xp_3D, ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D;
+  PetscScalar ***xp_3D, ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D, ***xPassive3p_3D;
 
   // Local vector of the global x and xPassive vectors
-  Vec xloc, xPassive0loc, xPassive1loc, xPassive2loc;
+  Vec xloc, xPassive0loc, xPassive1loc, xPassive2loc, xPassive3loc;
   DMCreateLocalVector (opt->da_elem, &xloc);
   DMGlobalToLocalBegin (opt->da_elem, opt->x, INSERT_VALUES, xloc);
   DMGlobalToLocalEnd (opt->da_elem, opt->x, INSERT_VALUES, xloc);
@@ -370,14 +416,20 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
       xPassive1loc);
   DMCreateLocalVector (opt->da_elem, &xPassive2loc);
   DMGlobalToLocalBegin (opt->da_elem, opt->xPassive2, INSERT_VALUES,
-      xPassive1loc);
+      xPassive2loc);
   DMGlobalToLocalEnd (opt->da_elem, opt->xPassive2, INSERT_VALUES,
-      xPassive1loc);
+      xPassive2loc);
+  DMCreateLocalVector (opt->da_elem, &xPassive3loc);
+  DMGlobalToLocalBegin (opt->da_elem, opt->xPassive3, INSERT_VALUES,
+      xPassive3loc);
+  DMGlobalToLocalEnd (opt->da_elem, opt->xPassive3, INSERT_VALUES,
+      xPassive3loc);
 
   DMDAVecGetArray (opt->da_elem, xloc, &xp_3D);
   DMDAVecGetArray (opt->da_elem, xPassive0loc, &xPassive0p_3D);
   DMDAVecGetArray (opt->da_elem, xPassive1loc, &xPassive1p_3D);
   DMDAVecGetArray (opt->da_elem, xPassive2loc, &xPassive2p_3D);
+  DMDAVecGetArray (opt->da_elem, xPassive3loc, &xPassive3p_3D);
 
   PetscInt xs, xe, Xs, Xe;
   PetscInt ys, ye, Ys, Ye;
@@ -408,11 +460,13 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
             xPassive0p_3D[k][j][i] = 0;
             xPassive1p_3D[k][j][i] = 0;
             xPassive2p_3D[k][j][i] = 0;
+            xPassive3p_3D[k][j][i] = 0;
           } else {
             xp_3D[k][j][i] = 0.0;
             xPassive0p_3D[k][j][i] = 1;
             xPassive1p_3D[k][j][i] = 0;
             xPassive2p_3D[k][j][i] = 0;
+            xPassive3p_3D[k][j][i] = 0;
           }
         }
 
@@ -423,6 +477,7 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
             xPassive0p_3D[k][j][i] = 0;
             xPassive1p_3D[k][j][i] = 1;
             xPassive2p_3D[k][j][i] = 0;
+            xPassive3p_3D[k][j][i] = 0;
           }
         }
 
@@ -433,6 +488,18 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
             xPassive0p_3D[k][j][i] = 0;
             xPassive1p_3D[k][j][i] = 0;
             xPassive2p_3D[k][j][i] = 1;
+            xPassive3p_3D[k][j][i] = 0;
+          }
+        }
+
+        if (!opt->inputSTL_SLD[0].empty ()) {
+          occTmp = occLOD[voxIndex / BATCH];
+          if ((occTmp >> (voxIndex % BATCH)) & 1) {
+            xp_3D[k][j][i] = 1.0;
+            xPassive0p_3D[k][j][i] = 0;
+            xPassive1p_3D[k][j][i] = 0;
+            xPassive2p_3D[k][j][i] = 0;
+            xPassive3p_3D[k][j][i] = 1;
           }
         }
       }
@@ -454,11 +521,16 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
       opt->xPassive2);
   DMLocalToGlobalEnd (opt->da_elem, xPassive2loc, INSERT_VALUES,
       opt->xPassive2);
+  DMLocalToGlobalBegin (opt->da_elem, xPassive2loc, INSERT_VALUES,
+      opt->xPassive3);
+  DMLocalToGlobalEnd (opt->da_elem, xPassive2loc, INSERT_VALUES,
+      opt->xPassive3);
 
   DMDAVecRestoreArray (opt->da_elem, xloc, &xp_3D);
   DMDAVecRestoreArray (opt->da_elem, xPassive0loc, &xPassive0p_3D);
   DMDAVecRestoreArray (opt->da_elem, xPassive1loc, &xPassive1p_3D);
   DMDAVecRestoreArray (opt->da_elem, xPassive2loc, &xPassive2p_3D);
+  DMDAVecRestoreArray (opt->da_elem, xPassive3loc, &xPassive3p_3D);
 
 #endif
 
@@ -472,15 +544,20 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
   VecAssemblyEnd (opt->xPassive1);
   VecAssemblyBegin (opt->xPassive2);
   VecAssemblyEnd (opt->xPassive2);
+  VecAssemblyBegin (opt->xPassive3);
+  VecAssemblyEnd (opt->xPassive3);
   VecDestroy (&xloc);
   VecDestroy (&xPassive0loc);
   VecDestroy (&xPassive1loc);
   VecDestroy (&xPassive2loc);
+  VecDestroy (&xPassive3loc);
 
   return ierr;
 }
 
-PetscErrorCode PrePostProcess::CleanUp () {
+PetscErrorCode
+PrePostProcess::CleanUp ()
+{
   PetscErrorCode ierr = 0;
 
   std::vector<int> ().swap (occDES);
@@ -493,7 +570,8 @@ PetscErrorCode PrePostProcess::CleanUp () {
 }
 
 #if DIM == 2
-PetscErrorCode PrePostProcess::DMDAGetElements_2D (DM dm, PetscInt *nel,
+PetscErrorCode
+PrePostProcess::DMDAGetElements_2D (DM dm, PetscInt *nel,
     PetscInt *nen, const PetscInt *e[]) { // new
   PetscErrorCode ierr = 0;
   DM_DA *da = (DM_DA*) dm->data;

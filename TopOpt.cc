@@ -49,6 +49,7 @@ void TopOpt::Init () { // Dummy constructor
   xPassive0 = NULL;   // # new
   xPassive1 = NULL;  // # new
   xPassive2 = NULL;  // # new
+  xPassive3 = NULL;  // # new
   nodeDensity = NULL;  // # new
   nodeAddingCounts = NULL;  // # new
 
@@ -87,6 +88,7 @@ TopOpt::~TopOpt () {
   if (xPassive0 != NULL) VecDestroy (&xPassive0);  // # new
   if (xPassive1 != NULL) VecDestroy (&xPassive1);  // # new
   if (xPassive2 != NULL) VecDestroy (&xPassive2);  // # new
+  if (xPassive3 != NULL) VecDestroy (&xPassive3);  // # new
   if (nodeDensity != NULL) VecDestroy (&nodeDensity);  // # new
   if (nodeAddingCounts != NULL) VecDestroy (&nodeAddingCounts);  // # new
   // Name strings of input STL files
@@ -116,9 +118,11 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
+  inputSTL_SLD = new std::string[1];
   inputSTL_DES[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_DES.STL");
   inputSTL_FIX[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_FIX.STL");
   inputSTL_LOD[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_LOD.STL");
+  inputSTL_SLD[0].assign ("");
   volfrac = 0.45;
   rmin = 6.0 * PetscMax(xc[1] / (nxyz[0] - 1),
              PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
@@ -135,8 +139,11 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
+  inputSTL_SLD = new std::string[1];
   inputSTL_DES[0].assign ("./CAD_models/2D/2D_compliant/2D_compliant_DES.STL");
   inputSTL_FIX[0].assign ("./CAD_models/2D/2D_compliant/2D_compliant_FIX.STL");
+  inputSTL_LOD[0].assign ("");
+  inputSTL_SLD[0].assign ("");
   volfrac = 0.3;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1),
                PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
@@ -153,8 +160,11 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
+  inputSTL_SLD = new std::string[1];
   inputSTL_DES[0].assign ("./CAD_models/2D/2D_heat/2D_heatSink_DES.STL");
   inputSTL_FIX[0].assign ("./CAD_models/2D/2D_heat/2D_heatSink_FIX.STL");
+  inputSTL_LOD[0].assign ("");
+  inputSTL_SLD[0].assign ("");
   volfrac = 0.45;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1),
                PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
@@ -197,9 +207,11 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
+  inputSTL_SLD = new std::string[1];
   inputSTL_DES[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_DES.STL");
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_FIX.STL");
   inputSTL_LOD[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_LOD.STL");
+  inputSTL_SLD[0].assign ("");
   volfrac = 0.12;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // # modified 0.08;
   Emin = 1.0e-9;
@@ -218,8 +230,11 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
+  inputSTL_SLD = new std::string[1];
   inputSTL_DES[0].assign ("./CAD_models/3D/3D_compliant/3D_compliant_DES.STL");
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_compliant/3D_compliant_FIX.STL");
+  inputSTL_LOD[0].assign ("");
+  inputSTL_SLD[0].assign ("");
   volfrac = 0.3;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
   Emin = 1.0e-9;
@@ -238,8 +253,11 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[1];
   inputSTL_LOD = new std::string[numLoads];
+  inputSTL_SLD = new std::string[1];
   inputSTL_DES[0].assign ("./CAD_models/3D/3D_heat/3D_heatSink_oneQuarter_DES.STL");
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_heat/3D_heatSink_oneQuarter_FIX.STL");
+  inputSTL_LOD[0].assign ("");
+  inputSTL_SLD[0].assign ("");
   volfrac = 0.3;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
   Emin = 1.0e-3;
@@ -724,12 +742,15 @@ PetscErrorCode TopOpt::SetUpOPT () {
   CHKERRQ(ierr);
   ierr = VecDuplicate (xPhys, &xPassive2);
   CHKERRQ(ierr);
+  ierr = VecDuplicate (xPhys, &xPassive3);
+  CHKERRQ(ierr);
   ierr = VecDuplicate (nodeDensity, &nodeAddingCounts);
   CHKERRQ(ierr);
 
   VecSet (xPassive0, 0); // # new
   VecSet (xPassive1, 0); // # new
   VecSet (xPassive2, 0); // # new
+  VecSet (xPassive3, 0); // # new
   VecSet (nodeDensity, 0); // # new
   VecSet (nodeAddingCounts, 0); // # new
 
@@ -935,6 +956,7 @@ PetscErrorCode TopOpt::WriteRestartFiles (PetscInt *itr, MMA *mma) {
   VecView(xPassive0, view);  // # new
   VecView(xPassive1, view);  // # new
   VecView(xPassive2, view);  // # new
+  VecView(xPassive3, view);  // # new
   VecView(nodeDensity, view);  // # new
   VecView(nodeAddingCounts, view);  // # new
 
