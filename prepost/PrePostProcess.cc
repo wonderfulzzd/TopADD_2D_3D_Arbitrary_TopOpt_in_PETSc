@@ -523,9 +523,9 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
       opt->xPassive2);
   DMLocalToGlobalEnd (opt->da_elem, xPassive2loc, INSERT_VALUES,
       opt->xPassive2);
-  DMLocalToGlobalBegin (opt->da_elem, xPassive2loc, INSERT_VALUES,
+  DMLocalToGlobalBegin (opt->da_elem, xPassive3loc, INSERT_VALUES,
       opt->xPassive3);
-  DMLocalToGlobalEnd (opt->da_elem, xPassive2loc, INSERT_VALUES,
+  DMLocalToGlobalEnd (opt->da_elem, xPassive3loc, INSERT_VALUES,
       opt->xPassive3);
 
   DMDAVecRestoreArray (opt->da_elem, xloc, &xp_3D);
