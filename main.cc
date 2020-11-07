@@ -61,11 +61,11 @@ int main (int argc, char *argv[]) {
       opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);
 #elif PHYSICS ==1
   LinearCompliant *physics = new LinearCompliant (opt->da_nodes, opt->numLoads,
-      opt->xPassive0, opt->xPassive1, opt->xPassive2);   // # new
+      opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);   // # new
 #elif PHYSICS == 2
   LinearHeatConduction *physics = new LinearHeatConduction (opt->da_nodes,
       opt->da_elem, opt->numLoads, opt->xPassive0, opt->xPassive1,
-      opt->xPassive2);    // # new
+      opt->xPassive2, opt->xPassive3);    // # new
 #endif
 
   // STEP 4: THE FILTERING

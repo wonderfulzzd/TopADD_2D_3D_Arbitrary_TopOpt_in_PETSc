@@ -387,9 +387,9 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
   DMLocalToGlobalEnd (opt->da_elem, xPassive2loc, INSERT_VALUES,
       opt->xPassive2);
   DMLocalToGlobalBegin (opt->da_elem, xPassive3loc, INSERT_VALUES,
-      opt->xPassive2);
+      opt->xPassive3);
   DMLocalToGlobalEnd (opt->da_elem, xPassive3loc, INSERT_VALUES,
-      opt->xPassive2);
+      opt->xPassive3);
 
   DMDAVecRestoreArray (opt->da_elem, xloc, &xp_2D);
   DMDAVecRestoreArray (opt->da_elem, xPassive0loc, &xPassive0p_2D);
@@ -565,8 +565,9 @@ PrePostProcess::CleanUp ()
   std::vector<int> ().swap (occDES);
   std::vector<int> ().swap (occFIX);
   std::vector<int> ().swap (occLOD);
+  std::vector<int> ().swap (occSLD);
 
-  ierr = occDES.size () + occFIX.size () + occLOD.size ();
+  ierr = occDES.size () + occFIX.size () + occLOD.size () + occSLD.size ();
 
   return ierr;
 }
