@@ -493,7 +493,7 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
         }
 
         if (!opt->inputSTL_SLD[0].empty ()) {
-          occTmp = occLOD[voxIndex / BATCH];
+          occTmp = occSLD[voxIndex / BATCH];
           if ((occTmp >> (voxIndex % BATCH)) & 1) {
             xp_3D[k][j][i] = 1.0;
             xPassive0p_3D[k][j][i] = 0;
