@@ -29,7 +29,6 @@ StlVoxelizer::StlVoxelizer () {
   solidsNumber = 0;
   solidsItr = 0;
   occSize = 0;
-  voxIndex = 0;
 }
 
 StlVoxelizer::StlVoxelizer (const char *filename) {
@@ -40,7 +39,6 @@ StlVoxelizer::StlVoxelizer (const char *filename) {
   solidsNumber = 0;
   solidsItr = 0;
   occSize = 0;
-  voxIndex = 0;
 
   Read_file (filename);
 }
@@ -53,7 +51,6 @@ StlVoxelizer::StlVoxelizer (const std::string &filename) {
   solidsNumber = 0;
   solidsItr = 0;
   occSize = 0;
-  voxIndex = 0;
 
   Read_file (filename);
 }
@@ -87,6 +84,7 @@ bool StlVoxelizer::Read_file (const std::string &filename) {
 void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz, float dx, float dy, float dz) {
 
+  unsigned int voxIndex;
   // Initialize occupancy vector
   occSize = (nx * ny * nz - 1) / BATCH + 1; // occupancy vector size after batched
   occ.clear ();
@@ -160,7 +158,7 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
 
 void StlVoxelizer::Voxelize_solid (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz) {
-  Fill_buffer (occ, nx, ny, nz);
+  Fill_buffer (nx, ny, nz);
   Fill_solid (occ, nx, ny, nz);
 }
 
@@ -406,29 +404,63 @@ bool StlVoxelizer::ReadStlFile_ASCII (const char *filename,
   return true;
 }
 
-void StlVoxelizer::Fill_buffer (std::vector<int> &occ, unsigned int nx,
-    unsigned int ny, unsigned int nz) {
-  int occTmp;
+void StlVoxelizer::Fill_buffer (unsigned int nx, unsigned int ny,
+    unsigned int nz) {
+  unsigned int x, y, z;
+  unsigned int occTmp;
+  unsigned int voxIndex;
 // fill XY
   for (unsigned int k = 0; k < nz; ++k) {
     for (unsigned int j = 0; j < ny; ++j) {
       for (unsigned int i = 0; i < nx; ++i) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occSUF[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if voxel is surface, then break
           break;
         else {
-          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          // Start flood fill from the voxel
+          BFS_flood_fill_buffer (nx, ny, nz, i, j, k);
+          // Search its neighbor voxels
+          for (unsigned int e = 0; e < 4; ++e) {
+            x = i + E_2D[e][0];
+            y = j + E_2D[e][1];
+            z = k;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_buffer (nx, ny, nz, x, y, z);
+            }
+          }
         }
       }
 
       for (unsigned int i = nx - 1; i + 1 > 0; --i) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occSUF[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if voxel is sur, then break
           break;
         else {
-          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          // Start flood fill from the voxel
+          BFS_flood_fill_buffer (nx, ny, nz, i, j, k);
+          // Search its neighbor voxels
+          for (unsigned int e = 0; e < 4; ++e) {
+            x = i + E_2D[e][0];
+            y = j + E_2D[e][1];
+            z = k;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_buffer (nx, ny, nz, x, y, z);
+            }
+          }
         }
       }
     }
@@ -439,46 +471,110 @@ void StlVoxelizer::Fill_buffer (std::vector<int> &occ, unsigned int nx,
     for (unsigned int k = 0; k < nz; ++k) {
       for (unsigned int j = 0; j < ny; ++j) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occSUF[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if voxel is sur, then break
           break;
         else {
-          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          // Start flood fill from the voxel
+          BFS_flood_fill_buffer (nx, ny, nz, i, j, k);
+          // Search its neighbor voxels
+          for (unsigned int e = 0; e < 4; ++e) {
+            y = j + E_2D[e][0];
+            z = k + E_2D[e][1];
+            x = i;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_buffer (nx, ny, nz, x, y, z);
+            }
+          }
         }
       }
 
       for (unsigned int j = ny - 1; j + 1 > 0; --j) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occSUF[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if voxel is sur, then break
           break;
         else {
-          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          // Start flood fill from the voxel
+          BFS_flood_fill_buffer (nx, ny, nz, i, j, k);
+          // Search its neighbor voxels
+          for (unsigned int e = 0; e < 4; ++e) {
+            y = j + E_2D[e][0];
+            z = k + E_2D[e][1];
+            x = i;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_buffer (nx, ny, nz, x, y, z);
+            }
+          }
         }
       }
     }
   }
 
-// fill XZ
+// fill ZX
   for (unsigned int j = 0; j < ny; ++j) {
     for (unsigned int i = 0; i < nx; ++i) {
       for (unsigned int k = 0; k < nz; ++k) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occSUF[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if voxel is sur, then break
           break;
         else {
-          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          // Start flood fill from the voxel
+          BFS_flood_fill_buffer (nx, ny, nz, i, j, k);
+          // Search its neighbor voxels
+          for (unsigned int e = 0; e < 4; ++e) {
+            z = k + E_2D[e][0];
+            x = i + E_2D[e][1];
+            y = j;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_buffer (nx, ny, nz, x, y, z);
+            }
+          }
         }
       }
 
-      for (int k = nz - 1; k + 1 > 0; --k) {
+      for (unsigned int k = nz - 1; k + 1 > 0; --k) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occSUF[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if voxel is sur, then break
           break;
         else {
-          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          // Start flood fill from the voxel
+          BFS_flood_fill_buffer (nx, ny, nz, i, j, k);
+          // Search its neighbor voxels
+          for (unsigned int e = 0; e < 4; ++e) {
+            z = k + E_2D[e][0];
+            x = i + E_2D[e][1];
+            y = j;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_buffer (nx, ny, nz, x, y, z);
+            }
+          }
         }
       }
     }
@@ -489,24 +585,32 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz) {
   unsigned int x, y, z;
   unsigned int occTmp;
+  unsigned int voxIndex;
 // fill XY
   for (unsigned int k = 0; k < nz; ++k) {
     for (unsigned int j = 0; j < ny; ++j) {
       for (unsigned int i = 0; i < nx; ++i) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occ[voxIndex / BATCH] & (occSUF[voxIndex / BATCH]);
-        if ((occTmp >> (voxIndex % BATCH)) & 1) // if occ is true and on surface, then break
+        occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1) // if occ is true and on surface, then break
           break;
         else {
+          occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                    >> (voxIndex % BATCH))
+                   & 1;
+          if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, i, j, k);
           for (unsigned int e = 0; e < 4; ++e) {
             x = i + E_2D[e][0];
             y = j + E_2D[e][1];
             z = k;
             if (x >= 0 && x < nx && y >= 0 && y < ny) {
               voxIndex = k * ny * nx + y * nx + x;
-              occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-              if (!((occTmp >> (voxIndex % BATCH)) & 1))
-                BFS_flood_fill (occ, nx, ny, nz, x, y, z);
+              occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, x, y, z);
             }
           }
         }
@@ -514,19 +618,26 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
 
       for (unsigned int i = nx - 1; i + 1 > 0; --i) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occ[voxIndex / BATCH] & (occSUF[voxIndex / BATCH]);
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1)
           break;
         else {
+          occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                    >> (voxIndex % BATCH))
+                   & 1;
+          if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, i, j, k);
           for (unsigned int e = 0; e < 4; ++e) {
             x = i + E_2D[e][0];
             y = j + E_2D[e][1];
             z = k;
             if (x >= 0 && x < nx && y >= 0 && y < ny) {
               voxIndex = k * ny * nx + y * nx + x;
-              occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-              if (!((occTmp >> (voxIndex % BATCH)) & 1))
-                BFS_flood_fill (occ, nx, ny, nz, x, y, z);
+              occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, x, y, z);
             }
           }
         }
@@ -539,19 +650,26 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
     for (unsigned int k = 0; k < nz; ++k) {
       for (unsigned int j = 0; j < ny; ++j) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occ[voxIndex / BATCH] & (occSUF[voxIndex / BATCH]);
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1)
           break;
         else {
+          occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                    >> (voxIndex % BATCH))
+                   & 1;
+          if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, i, j, k);
           for (unsigned int e = 0; e < 4; ++e) {
             y = j + E_2D[e][0];
             z = k + E_2D[e][1];
             x = i;
-            if (y >= 0 && y < ny && z >= 0 && z < nz) {
-              voxIndex = z * ny * nx + y * nx + i;
-              occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-              if (!((occTmp >> (voxIndex % BATCH)) & 1))
-                BFS_flood_fill (occ, nx, ny, nz, x, y, z);
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, x, y, z);
             }
           }
         }
@@ -559,19 +677,26 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
 
       for (unsigned int j = ny - 1; j + 1 > 0; --j) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occ[voxIndex / BATCH] & (occSUF[voxIndex / BATCH]);
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1)
           break;
         else {
+          occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                    >> (voxIndex % BATCH))
+                   & 1;
+          if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, i, j, k);
           for (unsigned int e = 0; e < 4; ++e) {
             y = j + E_2D[e][0];
             z = k + E_2D[e][1];
             x = i;
-            if (y >= 0 && y < ny && z >= 0 && z < nz) {
-              voxIndex = z * ny * nx + y * nx + i;
-              occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-              if (!((occTmp >> (voxIndex % BATCH)) & 1))
-                BFS_flood_fill (occ, nx, ny, nz, x, y, z);
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, x, y, z);
             }
           }
         }
@@ -584,19 +709,26 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
     for (unsigned int i = 0; i < nx; ++i) {
       for (unsigned int k = 0; k < nz; ++k) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occ[voxIndex / BATCH] & (occSUF[voxIndex / BATCH]);
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1)
           break;
         else {
+          occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                    >> (voxIndex % BATCH))
+                   & 1;
+          if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, i, j, k);
           for (unsigned int e = 0; e < 4; ++e) {
-            z = k + E_2D[e][0];
-            x = i + E_2D[e][1];
-            y = j;
-            if (z >= 0 && z < nz && x >= 0 && x < nx) {
-              voxIndex = z * ny * nx + j * nx + x;
-              occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-              if (!((occTmp >> (voxIndex % BATCH)) & 1))
-                BFS_flood_fill (occ, nx, ny, nz, x, y, z);
+            y = j + E_2D[e][0];
+            z = k + E_2D[e][1];
+            x = i;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, x, y, z);
             }
           }
         }
@@ -604,19 +736,26 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
 
       for (int k = nz - 1; k + 1 > 0; --k) {
         voxIndex = k * ny * nx + j * nx + i;
-        occTmp = occ[voxIndex / BATCH] & (occSUF[voxIndex / BATCH]);
-        if ((occTmp >> (voxIndex % BATCH)) & 1)
+        occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 1)
           break;
         else {
+          occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                    >> (voxIndex % BATCH))
+                   & 1;
+          if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, i, j, k);
           for (unsigned int e = 0; e < 4; ++e) {
-            z = k + E_2D[e][0];
-            x = i + E_2D[e][1];
-            y = j;
-            if (z >= 0 && z < nz && x >= 0 && x < nx) {
-              voxIndex = z * ny * nx + j * nx + x;
-              occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-              if (!((occTmp >> (voxIndex % BATCH)) & 1))
-                BFS_flood_fill (occ, nx, ny, nz, x, y, z);
+            y = j + E_2D[e][0];
+            z = k + E_2D[e][1];
+            x = i;
+            if (x >= 0 && x < nx && y >= 0 && y < ny) {
+              voxIndex = k * ny * nx + y * nx + x;
+              occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                        >> (voxIndex % BATCH))
+                       & 1;
+              if (occTmp == 0) BFS_flood_fill_solid (occ, nx, ny, nz, x, y, z);
             }
           }
         }
@@ -625,9 +764,53 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
   }
 }
 
-void StlVoxelizer::BFS_flood_fill (std::vector<int> &occ, unsigned int nx,
+void StlVoxelizer::BFS_flood_fill_buffer (unsigned int nx, unsigned int ny,
+    unsigned int nz, unsigned int x0, unsigned int y0, unsigned int z0) {
+  unsigned int voxIndex;
+// Queue for recording breadth first search
+  std::queue<Vector3ui> q;
+
+// Initialize the seed voxel and mark it as solid
+  Vector3ui voxTemp = { x0, y0, z0 };
+  q.push (voxTemp);
+  voxIndex = z0 * ny * nx + y0 * nx + x0;
+  occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+
+  unsigned int x, y, z;
+  unsigned int occTmp;
+  while (!q.empty ()) {
+    voxTemp = q.front ();
+    q.pop ();
+    x0 = voxTemp.value[0];
+    y0 = voxTemp.value[1];
+    z0 = voxTemp.value[2];
+
+    for (unsigned int e = 0; e < 6; ++e) {
+      x = x0 + E_3D[e][0];
+      y = y0 + E_3D[e][1];
+      z = z0 + E_3D[e][2];
+
+      if (x >= 0 && x < nx && y >= 0 && y < ny && z >= 0 && z < nz) {
+        voxIndex = z * ny * nx + y * nx + x;
+        occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 0) { // not buffer nor occupied, then put it to queue
+          voxTemp.value[0] = x;
+          voxTemp.value[1] = y;
+          voxTemp.value[2] = z;
+          q.push (voxTemp);
+          occBUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH)); // mark the voxel as solid
+        }
+      }
+    }
+  }
+}
+
+void StlVoxelizer::BFS_flood_fill_solid (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz, unsigned int x0, unsigned int y0,
     unsigned int z0) {
+  unsigned int voxIndex;
 // Queue for recording breadth first search
   std::queue<Vector3ui> q;
 
@@ -653,13 +836,15 @@ void StlVoxelizer::BFS_flood_fill (std::vector<int> &occ, unsigned int nx,
 
       if (x >= 0 && x < nx && y >= 0 && y < ny && z >= 0 && z < nz) {
         voxIndex = z * ny * nx + y * nx + x;
-        occTmp = occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH];
-        if (!((occTmp >> (voxIndex % BATCH)) & 1)) { // not buffer nor occupied, then put it to queue
+        occTmp = ((occBUF[voxIndex / BATCH] | occ[voxIndex / BATCH])
+                  >> (voxIndex % BATCH))
+                 & 1;
+        if (occTmp == 0) { // not buffer nor occupied, then put it to queue
           voxTemp.value[0] = x;
           voxTemp.value[1] = y;
           voxTemp.value[2] = z;
           q.push (voxTemp);
-          occ[voxIndex / BATCH] |= (1 << (voxIndex % BATCH)); // mark it as solid
+          occ[voxIndex / BATCH] |= (1 << (voxIndex % BATCH)); // mark the voxel as solid
         }
       }
     }

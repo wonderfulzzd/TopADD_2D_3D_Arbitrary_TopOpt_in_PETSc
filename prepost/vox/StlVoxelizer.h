@@ -203,11 +203,6 @@ class StlVoxelizer {
     unsigned int occSize;
 
     /*
-     * Voxel index, the voxel one-dimensional index
-     */
-    unsigned int voxIndex;
-
-    /*
      * Occupancy temp vectors, surface, buffer
      */
     std::vector<int> occSUF, occBUF;
@@ -268,14 +263,12 @@ class StlVoxelizer {
 
     /**
      * Fill the buffer domain of the imported CAD
-     * \param[in] occupancy tensor
      * \param[in] buffer tensor
      * \param[in] mesh number nx, ny, nz
      * \param[out] buffer tensor
      * \return
      */
-    void Fill_buffer (std::vector<int> &occ, unsigned int nx, unsigned int ny,
-        unsigned int nz);
+    void Fill_buffer (unsigned int nx, unsigned int ny, unsigned int nz);
 
     /**
      * Voxelize the given mesh into an occupancy grid.
@@ -289,7 +282,18 @@ class StlVoxelizer {
         unsigned int nz);
 
     /**
-     * Breath First Search (BFS) flood filling.
+     * Breath First Search (BFS) flood filling for buffer.
+     * \param[in] buffer tensor
+     * \param[in] mesh number nx, ny, nz
+     * \param[in] current voxel location, x, y, z
+     * \param[out] occupancy tensor
+     * \return
+     */
+    void BFS_flood_fill_buffer (unsigned int nx, unsigned int ny,
+        unsigned int nz, unsigned int x0, unsigned y0, unsigned z0);
+
+    /**
+     * Breath First Search (BFS) flood filling for solid.
      * \param[in] occupancy tensor
      * \param[in] buffer tensor
      * \param[in] mesh number nx, ny, nz
@@ -297,7 +301,7 @@ class StlVoxelizer {
      * \param[out] occupancy tensor
      * \return
      */
-    void BFS_flood_fill (std::vector<int> &occ, unsigned int nx,
+    void BFS_flood_fill_solid (std::vector<int> &occ, unsigned int nx,
         unsigned int ny, unsigned int nz, unsigned int x0, unsigned y0,
         unsigned z0);
 
