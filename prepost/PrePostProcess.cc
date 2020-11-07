@@ -162,6 +162,8 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
     ierr = sv->Read_file (opt->inputSTL_FIX[0]);
   if (!opt->inputSTL_LOD[0].empty ())
     ierr = sv->Read_file (opt->inputSTL_LOD[0]);
+  if (!opt->inputSTL_SLD[0].empty ())
+    ierr = sv->Read_file (opt->inputSTL_SLD[0]);
   t2 = MPI_Wtime ();
   PetscPrintf (PETSC_COMM_WORLD, "# Read STL files took: %f s\n", t2 - t1);
 
