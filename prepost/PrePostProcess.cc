@@ -108,8 +108,8 @@ PetscErrorCode PrePostProcess::UpdateNodeDensity (TopOpt *opt) {
   // Loop over elements
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
-    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0
-        && xPassive3p[i] == 0) {
+    if (xPassive0p[i] == 0 /*&& xPassive1p[i] == 0 && xPassive2p[i] == 0
+        && xPassive3p[i] == 0*/) {
       memset (eNodeDensity, 0.0, sizeof(eNodeDensity[0]) * nen);
       for (PetscInt j = 0; j < nen; j++) {
         eNodeDensity[j] = xp[i];
