@@ -259,7 +259,7 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
   // 2. check whether the total file size matches with the computed value
   in.seekg (80); // header is from 0 to 79, numTriangle starts from offset 80 to 83
   unsigned int numTriangles; // number of triangles
-  in.read ((char*) &numTriangles, 4);
+  in.read (reinterpret_cast<char*> (&numTriangles), 4);
   if (fileSize == (80 + 4 + eachTriangleSize * numTriangles)) {
     in.close ();
     return BinaryStl;
@@ -291,7 +291,7 @@ bool StlVoxelizer::ReadStlFile_BINARY (const char *filename, std::vector<
   if (!in)
   ERROR_THROW("Error during reading header in the stl file...");
   unsigned int numTriangles; // the number of triangles
-  in.read ((char*) &numTriangles, 4);
+  in.read (reinterpret_cast<char*> (&numTriangles), 4);
   if (!in)
   ERROR_THROW("Error during reading number of triangles in the stl file...");
 
@@ -303,7 +303,7 @@ bool StlVoxelizer::ReadStlFile_BINARY (const char *filename, std::vector<
   short att;
   solidRangesOut.push_back (trisOut.size ()); // save solid range to be able to deal with multiple solids: start
   while (f < numTriangles) {
-    in.read ((char*) buf, 12 * 4);
+    in.read (reinterpret_cast<char*> (buf), 12 * 4);
     if (!in)
     ERROR_THROW("Error during reading info. of a triangle in the stl file...");
 
@@ -320,7 +320,7 @@ bool StlVoxelizer::ReadStlFile_BINARY (const char *filename, std::vector<
       verticesOut.push_back (cr);
     }
     // 1 short of attribute
-    in.read ((char*) &att, 2);
+    in.read (reinterpret_cast<char*> (&att), 2);
     if (!in)
     ERROR_THROW("Error during reading attribute with 1 short size...");
 
