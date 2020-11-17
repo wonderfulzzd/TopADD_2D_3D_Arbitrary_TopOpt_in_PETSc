@@ -373,6 +373,19 @@ class StlVoxelizer {
         const Vector3f &v1, const Vector3f &v2, const Vector3f &v3);
 
     /**
+     * Compute triangle box intersection for removing inflation.
+     * \param[in] min defining voxel
+     * \param[in] max defining voxel
+     * \param[in] v1 first vertex
+     * \param[in] v2 second vertex
+     * \param[in] v3 third vertex
+     * \return success
+     */
+    inline bool Triangle_box_intersection_remove_inflation (const Vector3f &min,
+        Vector3f &max, const Vector3f &v1, const Vector3f &v2,
+        const Vector3f &v3);
+
+    /**
      * Get the number of vertices.
      * \return number of vertices
      */

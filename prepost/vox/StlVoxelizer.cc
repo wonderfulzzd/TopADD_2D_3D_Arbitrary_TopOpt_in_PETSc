@@ -20,6 +20,7 @@
 
 // Point-triangle distance and ray-triangle intersection.
 #include "box_triangle/aabb_triangle_overlap.h"
+#include "box_triangle/aabb_triangle_overlap_remove_inflation.h"
 
 StlVoxelizer::StlVoxelizer () {
   vertices.clear ();
@@ -84,7 +85,10 @@ bool StlVoxelizer::Read_file (const std::string &filename) {
 void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz, float dx, float dy, float dz) {
 
-  unsigned int voxIndex;
+  unsigned int voxIndex, voxIndex1, voxIndex2;
+  unsigned int occTmp, occTmp1, occTmp2;
+  bool overlap, overlapInflation;
+  float tolerance = 1E-4 * std::min (dx, std::min (dy, dz));
   // Initialize occupancy vector
   occSize = (nx * ny * nz - 1) / BATCH + 1; // occupancy vector size after batched
   occ.clear ();
@@ -103,7 +107,6 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
   Vector3ui voxMaxGlobal = { nx, ny, nz };
   Vector3ui voxMinGlobal = { 0, 0, 0 };
 
-  bool overlap;
   for (unsigned int l = solidsRanges[2 * solidsItr];
       l < solidsRanges[2 * solidsItr + 1]; ++l) { // loop over facet
     // Get the triangular space range and vox index range, so that the vox
@@ -122,15 +125,15 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
       }
     }
 
-    // vox index range
+    // vox index range, having buffer of 2 voxels
     for (int dim = 0; dim < 3; ++dim) { // x, y, z
       unsigned int tmp1, tmp2;
       tmp1 = static_cast<unsigned int> (std::ceil (
           triMax.value[dim] / voxSize.value[dim]));
-      tmp2 = static_cast<unsigned int> (std::ceil (
+      tmp2 = static_cast<unsigned int> (std::floor (
           triMin.value[dim] / voxSize.value[dim]));
       voxMaxLocal.value[dim] = std::min (tmp1 + 1, voxMaxGlobal.value[dim]);
-      voxMinLocal.value[dim] = std::max (tmp2 == 0 ? 0 : tmp2 - 1,
+      voxMinLocal.value[dim] = std::max (tmp2 <= 1 ? 0 : tmp2 - 1,
           voxMinGlobal.value[dim]); // avoid “-1”
     }
 
@@ -148,6 +151,98 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
               vertices[3 * l + 1], vertices[3 * l + 2]);
           if (overlap) {
             occSUF[voxIndex / BATCH] |= (1 << (voxIndex % BATCH));
+          }
+        }
+      }
+    }
+  }
+
+  // Excluding inflation when the triangle normals is parallel to one of the x,y,z axis
+  // because when a triangle is coincident with one of the box surfaces
+  // this box and its neighbor that sharing the same surface will be counted as solid
+  // However, this will cause inflation of the voxelized geometry. So we need to
+  // exclude one of these two neighboring boxes based on the normals of the triangle.
+  for (unsigned int l = solidsRanges[2 * solidsItr];
+      l < solidsRanges[2 * solidsItr + 1]; ++l) { // loop over facet
+    // if triangle parallel to x, y, or z
+    if (std::abs (normals[l].value[0]) >= 1.0 - tolerance
+        || std::abs (normals[l].value[1]) >= 1.0 - tolerance
+        || std::abs (normals[l].value[2]) >= 1.0 - tolerance) {
+      // Get the triangular space range and vox index range, so that the vox
+      // range can be reduced. Thus, the voxelization can be accelerated.
+      // triangular range
+      triMax = vertices[3 * l];
+      triMin = vertices[3 * l];
+      voxMaxLocal = Vector3ui { 0, 0, 0 };
+      voxMinLocal = Vector3ui { 0, 0, 0 };
+      for (int dim = 0; dim < 3; ++dim) { // x, y, z
+        for (int v = 0; v < 3; ++v) { // vertex 1, 2, 3
+          triMax.value[dim] = std::max (triMax.value[dim],
+              vertices[3 * l + v].value[dim]);
+          triMin.value[dim] = std::min (triMin.value[dim],
+              vertices[3 * l + v].value[dim]);
+        }
+      }
+
+      // vox index range
+      for (int dim = 0; dim < 3; ++dim) { // x, y, z
+        unsigned int tmp1, tmp2;
+        tmp1 = static_cast<unsigned int> (std::ceil (
+            triMax.value[dim] / voxSize.value[dim]));
+        tmp2 = static_cast<unsigned int> (std::floor (
+            triMin.value[dim] / voxSize.value[dim]));
+        voxMaxLocal.value[dim] = std::min (tmp1 + 1, voxMaxGlobal.value[dim]);
+        voxMinLocal.value[dim] = std::max (tmp2 <= 1 ? 0 : tmp2 - 1,
+            voxMinGlobal.value[dim]); // avoid “-1”
+      }
+
+      // loop over local voxels
+      for (unsigned int k = voxMinLocal.value[2]; k < voxMaxLocal.value[2];
+          ++k) {
+        for (unsigned int j = voxMinLocal.value[1]; j < voxMaxLocal.value[1];
+            ++j) {
+          for (unsigned int i = voxMinLocal.value[0]; i < voxMaxLocal.value[0];
+              ++i) {
+
+            unsigned int i1 = i, j1 = j, k1 = k, i2 = i, j2 = j, k2 = k;
+            if (std::abs (normals[l].value[0]) >= 1.0 - tolerance) {
+              i1 = i1 + normals[l].value[0] / std::abs (normals[l].value[0]);
+              i2 = i2 - normals[l].value[0] / std::abs (normals[l].value[0]);
+            } else if (std::abs (normals[l].value[1]) >= 1.0 - tolerance) {
+              j1 = j1 + normals[l].value[1] / std::abs (normals[l].value[1]);
+              j2 = j2 - normals[l].value[1] / std::abs (normals[l].value[1]);
+            } else if (std::abs (normals[l].value[2]) >= 1.0 - tolerance) {
+              k1 = k1 + normals[l].value[2] / std::abs (normals[l].value[2]);
+              k2 = k2 - normals[l].value[2] / std::abs (normals[l].value[2]);
+            }
+            voxIndex = k * ny * nx + j * nx + i;
+            occTmp = (occSUF[voxIndex / BATCH] >> (voxIndex % BATCH)) & 1;
+            if (i1 < nx && i1 >= 0 && j1 < ny && j1 >= 0 && k1 < nz
+                && k1 >= 0) {
+              voxIndex1 = k1 * ny * nx + j1 * nx + i1; // voxel next to the current along the normal direction
+              occTmp1 = (occSUF[voxIndex1 / BATCH] >> (voxIndex1 % BATCH)) & 1;
+            } else {
+              occTmp1 = 0;
+            }
+            if (i2 < nx && i2 >= 0 && j2 < ny && j2 >= 0 && k2 < nz
+                && k2 >= 0) {
+              voxIndex2 = k2 * ny * nx + j2 * nx + i2; // voxel next to the current along the normal direction
+              occTmp2 = (occSUF[voxIndex2 / BATCH] >> (voxIndex2 % BATCH)) & 1;
+            } else {
+              occTmp2 = 0;
+            }
+            // voxel min and max bound
+            Vector3f min = { dx * i, dy * j, dz * k };
+            Vector3f max = { dx * (i + 1), dy * (j + 1), dz * (k + 1) };
+
+            if (occTmp && occTmp1 == 0 && occTmp2) {
+              overlapInflation = Triangle_box_intersection_remove_inflation (
+                  min, max, vertices[3 * l], vertices[3 * l + 1],
+                  vertices[3 * l + 2]);
+              if (overlapInflation) {
+                occSUF[voxIndex / BATCH] &= (~(1 << (voxIndex % BATCH))); // remove the inflated voxel
+              }
+            }
           }
         }
       }
@@ -209,7 +304,7 @@ void StlVoxelizer::CleanUp () {
 //##############################################################################
 
 StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
-  // Load the stl file
+// Load the stl file
   std::ifstream in (filename);
   if (!in) {
     ERROR_THROW("Error during open the stl file...");
@@ -218,12 +313,12 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
   size_t fileSize = GetStlFileSize (filename); // the stl file size
   std::string line; // line string variable
   std::vector<char> charBuf; // char array buf stored in a vector
-  // Normals 3 float (3*4 bytes) + Vertices 3 x 3float (3*3*4 bytes) + AttributeCount 1 short (2 bytes) = 50 bytes
+// Normals 3 float (3*4 bytes) + Vertices 3 x 3float (3*3*4 bytes) + AttributeCount 1 short (2 bytes) = 50 bytes
   const size_t eachTriangleSize = 3 * sizeof(float_t) + 3 * 3 * sizeof(float_t)
                                   + sizeof(uint16_t);
 
-  // ASCII
-  // 1. check file size, "solid \n" + "endsolid" should be at least = 15 bytes
+// ASCII
+// 1. check file size, "solid \n" + "endsolid" should be at least = 15 bytes
   if (fileSize < 15) {
     std::string errStr;
     std::ostringstream oss;
@@ -232,7 +327,7 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
     in.close (); // close the file
     ERROR_THROW(errStr);
   }
-  // 2. check first 6 bytes whether is "solid "
+// 2. check first 6 bytes whether is "solid "
   std::getline (in, line);
   if (line.compare (0, 6, "solid ") == 0) {
     // 3. then check whether ther is "endsolid"
@@ -245,9 +340,9 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
   }
   in.close ();
 
-  // BINARY
+// BINARY
   in.open (filename, std::ios::binary); // reload the file stream as binary
-  // 1. check file size, 80 bytes (header size) + 4 bytes (number of triangular) should be at least = 84 bytes
+// 1. check file size, 80 bytes (header size) + 4 bytes (number of triangular) should be at least = 84 bytes
   if (fileSize < 84) {
     std::string errStr;
     std::ostringstream oss;
@@ -256,7 +351,7 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
     in.close (); // close the file
     ERROR_THROW(errStr);
   }
-  // 2. check whether the total file size matches with the computed value
+// 2. check whether the total file size matches with the computed value
   in.seekg (80); // header is from 0 to 79, numTriangle starts from offset 80 to 83
   unsigned int numTriangles; // number of triangles
   in.read (reinterpret_cast<char*> (&numTriangles), 4);
@@ -265,7 +360,7 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
     return BinaryStl;
   }
 
-  // If not ASCII nor BINARY, throw an error
+// If not ASCII nor BINARY, throw an error
   ERROR_THROW("Error during open the stl file for both ASCII and BINARY ...");
 }
 
@@ -295,7 +390,7 @@ bool StlVoxelizer::ReadStlFile_BINARY (const char *filename, std::vector<
   if (!in)
   ERROR_THROW("Error during reading number of triangles in the stl file...");
 
-  // read the stl facet by facet
+// read the stl facet by facet
   unsigned int f = 0; // the index of the triangle data
   Vector3f nl, cr;
   Vector3ui tv;
@@ -310,8 +405,9 @@ bool StlVoxelizer::ReadStlFile_BINARY (const char *filename, std::vector<
     // 3 normals
     for (int i = 0; i < 3; ++i) {
       nl.value[i] = buf[i];
-      normalsOut.push_back (nl);
     }
+    normalsOut.push_back (nl);
+
     // 3 vertices
     for (int j = 0; j < 3; ++j) {
       for (int i = 0; i < 3; ++i) {
@@ -862,4 +958,22 @@ inline bool StlVoxelizer::Triangle_box_intersection (const Vector3f &min,
       - half_size[2] };
   float vertices[3][3] = { { v1.value[0], v1.value[1], v1.value[2] }, { v2.value[0], v2.value[1], v2.value[2] }, { v3.value[0], v3.value[1], v3.value[2] } };
   return triBoxOverlap (center, half_size, vertices);
+}
+
+inline bool StlVoxelizer::Triangle_box_intersection_remove_inflation (
+    const Vector3f &min,
+    Vector3f &max, const Vector3f &v1, const Vector3f &v2, const Vector3f &v3) {
+  bool removeInflationFlag = 0;
+  float half_size[3] = { (max.value[0] - min.value[0]) / (float) 2.0, (max.value[1]
+      - min.value[1])
+                                                                      / (float) 2.0, (max.value[2]
+      - min.value[2])
+                                                                                     / (float) 2.0 };
+  float center[3] = { max.value[0] - half_size[0], max.value[1] - half_size[1], max.value[2]
+      - half_size[2] };
+  float vertices[3][3] = { { v1.value[0], v1.value[1], v1.value[2] }, { v2.value[0], v2.value[1], v2.value[2] }, { v3.value[0], v3.value[1], v3.value[2] } };
+// Judge to remove inflation
+  removeInflationFlag = triBoxOverlapRemoveInflation (center, half_size,
+      vertices);
+  return removeInflationFlag;
 }
