@@ -7,7 +7,7 @@ The code solves topology optimization problems with arbitrary design domains in 
 
 ![2D problem](pic/01.jpg?raw=true "2D Example")
 
-Moreover, it can solve 3D problems as well as two other problems: compliant design and heat conduction problems:
+Moreover, it can solve 3D problems as well as other two problems: compliant design and heat conduction problems:
 
 ![Different problem](pic/02.jpg?raw=true "2D Extruded and 3D")
 
