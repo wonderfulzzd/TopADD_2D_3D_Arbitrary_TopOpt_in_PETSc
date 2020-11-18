@@ -1,19 +1,20 @@
-// ---------------------------------------------------------------------
+// -------------------------------------------------------------------
 //
-// Copyright (C) 2018 - 2020 by the TopOptVox authors
+// Copyright (C) 2018 - 2020 by the TopADD authors
 //
-// This file is part of the TopOptVox.
+// This file is part of the TopADD.
 //
-// The TopOptVox is free software; you can use it, redistribute
+// The TopADD is free software; you can use it, redistribute
 // it, and/or modify it under the terms of the GNU Lesser General
 // Public License as published by the Free Software Foundation; either
 // version 2.1 of the License, or (at your option) any later version.
 // The full text of the license can be found in the file LICENSE.md at
-// the top level directory of TopOptVox.
+// the top level directory of TopADD.
 //
 // Author: Zhidong Brian Zhang
-// Created on: December 2018
-// Updated on: Apr.19 2020
+// Created on: Dec. 2018
+// Updated on: Sep. 2020
+//
 // ---------------------------------------------------------------------
 
 #ifndef PrePostProcess_H_
