@@ -39,7 +39,7 @@ To visulize, using Paraview
 > **NOTE**: The code works with **PETSc version 3.9.0**
 
 
-## 3D Printing
+## Additive Manufacturing (also known as 3D Printing)
 
 The optimized parts can be directly printed without any post-processing:
 
