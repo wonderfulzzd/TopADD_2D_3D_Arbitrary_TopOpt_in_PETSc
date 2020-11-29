@@ -35,7 +35,7 @@ LinearCompliant::LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
 
   // Setup sitffness matrix, load vector and bcs (Dirichlet) for the design
   // problem
-  SetUpDMDA (da_nodes);
+  SetUpNodalMesh (da_nodes);
 }
 
 LinearCompliant::~LinearCompliant () {
@@ -54,7 +54,7 @@ LinearCompliant::~LinearCompliant () {
   VecDestroy (&(Sv));
 }
 
-PetscErrorCode LinearCompliant::SetUpDMDA (DM da_nodes) {
+PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
   PetscErrorCode ierr = 0;
 
 #if  DIM ==2

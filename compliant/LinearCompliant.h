@@ -90,7 +90,7 @@ class LinearCompliant {
     Vec Sv; // spring vector
 
     // Extract DMDA from input one and set up a new one for linear compliant
-    PetscErrorCode SetUpDMDA (DM da_nodes); //new
+    PetscErrorCode SetUpNodalMesh (DM da_nodes); //new
 
     // Update the load and boundary conditions
     PetscErrorCode SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
