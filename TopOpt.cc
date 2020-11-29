@@ -46,12 +46,13 @@ void TopOpt::Init () { // Dummy constructor
   /**
    * Newly added items
    */
-  xPassive0 = NULL;   // # new
-  xPassive1 = NULL;  // # new
-  xPassive2 = NULL;  // # new
-  xPassive3 = NULL;  // # new
-  nodeDensity = NULL;  // # new
-  nodeAddingCounts = NULL;  // # new
+  xPassive0 = NULL; // # new
+  xPassive1 = NULL; // # new
+  xPassive2 = NULL; // # new
+  xPassive3 = NULL; // # new
+  nodeDensity = NULL; // # new
+  nodeAddingCounts = NULL; // # new
+  gacc = NULL; // # new
 
   SetUp ();
 }
@@ -85,16 +86,18 @@ TopOpt::~TopOpt () {
    */
   // Delete vectors
   // Densities
-  if (xPassive0 != NULL) VecDestroy (&xPassive0);  // # new
-  if (xPassive1 != NULL) VecDestroy (&xPassive1);  // # new
-  if (xPassive2 != NULL) VecDestroy (&xPassive2);  // # new
-  if (xPassive3 != NULL) VecDestroy (&xPassive3);  // # new
-  if (nodeDensity != NULL) VecDestroy (&nodeDensity);  // # new
-  if (nodeAddingCounts != NULL) VecDestroy (&nodeAddingCounts);  // # new
+  if (xPassive0 != NULL) VecDestroy (&xPassive0); // # new
+  if (xPassive1 != NULL) VecDestroy (&xPassive1); // # new
+  if (xPassive2 != NULL) VecDestroy (&xPassive2); // # new
+  if (xPassive3 != NULL) VecDestroy (&xPassive3); // # new
+  if (nodeDensity != NULL) VecDestroy (&nodeDensity); // # new
+  if (nodeAddingCounts != NULL) VecDestroy (&nodeAddingCounts); // # new
   // Name strings of input STL files
-  if (inputSTL_DES != NULL) delete[] inputSTL_DES;  // # new
-  if (inputSTL_FIX != NULL) delete[] inputSTL_FIX;  // # new
-  if (inputSTL_LOD != NULL) delete[] inputSTL_LOD;  // # new
+  if (inputSTL_DES != NULL) delete[] inputSTL_DES; // # new
+  if (inputSTL_FIX != NULL) delete[] inputSTL_FIX; // # new
+  if (inputSTL_LOD != NULL) delete[] inputSTL_LOD; // # new
+  // Delete the gravity load vector
+  if (gacc != NULL) delete[] gacc; // # new
 }
 
 // NO METHODS !
@@ -194,9 +197,9 @@ PetscErrorCode TopOpt::SetUp () {
 
 #if PHYSICS == 0
   // Linear elasticity
-  nxyz[0] = 65; // 129; 241
-  nxyz[1] = 33; // 65;  121
-  nxyz[2] = 33; // 65;  121
+  nxyz[0] = 65; //129; //241
+  nxyz[1] = 33; //65;  //121
+  nxyz[2] = 33; //65;  //121
   xc[0] = 0.0;
   xc[1] = 2.0;
   xc[2] = 0.0;
@@ -213,13 +216,15 @@ PetscErrorCode TopOpt::SetUp () {
   inputSTL_LOD[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_LOD.STL");
   inputSTL_SLD[0].assign ("");
   volfrac = 0.12;
-  rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // # modified 0.08;
+  rmin = 3.0
+         * PetscMax(xc[1] / (nxyz[0] - 1),
+             PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // # modified 0.08;
   Emin = 1.0e-9;
 #elif PHYSICS == 1   // # new
   // Compliant
   nxyz[0] = 81; //241;
   nxyz[1] = 41; //121;
-  nxyz[2] = 9;// 33;
+  nxyz[2] = 9;//33;
   xc[0] = 0.0;
   xc[1] = 80.0;
   xc[2] = 0.0;
@@ -240,9 +245,9 @@ PetscErrorCode TopOpt::SetUp () {
   Emin = 1.0e-9;
 #elif PHYSICS == 2   // # new
   // Linear heat conduction
-  nxyz[0] = 201;
-  nxyz[1] = 249;
-  nxyz[2] = 201;
+  nxyz[0] = 49; //97; // 201;
+  nxyz[1] = 65; //129; //249;
+  nxyz[2] = 49; //97; //201;
   xc[0] = 0.0;
   xc[1] = 50.0;
   xc[2] = 0.0;
@@ -717,42 +722,62 @@ PetscErrorCode TopOpt::SetUpOPT () {
   ierr = VecDuplicate (xPhys, &xTilde);
   CHKERRQ(ierr);
 
-  VecSet (x, volfrac); // Initialize to volfrac !
-  VecSet (xTilde, volfrac); // Initialize to volfrac !
-  VecSet (xPhys, volfrac); // Initialize to volfrac !
+  ierr = VecSet (x, volfrac); // Initialize to volfrac !  // # modified
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (xTilde, volfrac); // Initialize to volfrac ! // # modified
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (xPhys, volfrac); // Initialize to volfrac !  // # modified
+  CHKERRQ(ierr); // # new
 
   // Sensitivity vectors
   ierr = VecDuplicate (x, &dfdx);
   CHKERRQ(ierr);
   ierr = VecDuplicateVecs (x, m, &dgdx);
   CHKERRQ(ierr);
+  ierr = VecSet (dfdx, 0); // # new
+  CHKERRQ(ierr); // # new
+  for (int i = 0; i < m; ++i) { // # new
+    ierr = VecSet (dgdx[i], 0); // # new
+    CHKERRQ(ierr); // # new
+  } // # new
 
   // Bounds and
-  VecDuplicate (x, &xmin);
-  VecDuplicate (x, &xmax);
-  VecDuplicate (x, &xold);
-  VecSet (xold, volfrac);
+  ierr = VecDuplicate (x, &xmin); // # modified
+  CHKERRQ(ierr); // # new
+  ierr = VecDuplicate (x, &xmax); // # modified
+  CHKERRQ(ierr); // # new
+  ierr = VecDuplicate (x, &xold); // # modified
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (xold, volfrac); // # modified
+  CHKERRQ(ierr); // # new
 
   /**
    * Newly added items
    */
-  ierr = VecDuplicate (xPhys, &xPassive0);
-  CHKERRQ(ierr);
-  ierr = VecDuplicate (xPhys, &xPassive1);
-  CHKERRQ(ierr);
-  ierr = VecDuplicate (xPhys, &xPassive2);
-  CHKERRQ(ierr);
-  ierr = VecDuplicate (xPhys, &xPassive3);
-  CHKERRQ(ierr);
-  ierr = VecDuplicate (nodeDensity, &nodeAddingCounts);
-  CHKERRQ(ierr);
+  ierr = VecDuplicate (xPhys, &xPassive0); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecDuplicate (xPhys, &xPassive1); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecDuplicate (xPhys, &xPassive2); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecDuplicate (xPhys, &xPassive3); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecDuplicate (nodeDensity, &nodeAddingCounts); // # new
+  CHKERRQ(ierr); // # new
 
-  VecSet (xPassive0, 0); // # new
-  VecSet (xPassive1, 0); // # new
-  VecSet (xPassive2, 0); // # new
-  VecSet (xPassive3, 0); // # new
-  VecSet (nodeDensity, 0); // # new
-  VecSet (nodeAddingCounts, 0); // # new
+  ierr = VecSet (xPassive0, 0); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (xPassive1, 0); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (xPassive2, 0); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (xPassive3, 0); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (nodeDensity, 0); // # new
+  CHKERRQ(ierr); // # new
+  ierr = VecSet (nodeAddingCounts, 0); // # new
+  CHKERRQ(ierr); // # new
+  gacc = new PetscScalar[DIM]; // # new
 
   return (ierr);
 }
@@ -953,12 +978,12 @@ PetscErrorCode TopOpt::WriteRestartFiles (PetscInt *itr, MMA *mma) {
   /**
    * Newly added items
    */
-  VecView(xPassive0, view);  // # new
-  VecView(xPassive1, view);  // # new
-  VecView(xPassive2, view);  // # new
-  VecView(xPassive3, view);  // # new
-  VecView(nodeDensity, view);  // # new
-  VecView(nodeAddingCounts, view);  // # new
+  VecView (xPassive0, view); // # new
+  VecView (xPassive1, view); // # new
+  VecView (xPassive2, view); // # new
+  VecView (xPassive3, view); // # new
+  VecView (nodeDensity, view); // # new
+  VecView (nodeAddingCounts, view); // # new
 
   // Clean up
   PetscViewerDestroy (&view);

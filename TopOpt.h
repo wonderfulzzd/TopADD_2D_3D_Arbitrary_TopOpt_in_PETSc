@@ -140,6 +140,7 @@ class TopOpt {
     Vec xPassive3; // # new; the passive solid element index
     Vec nodeDensity; // # new; node density
     Vec nodeAddingCounts; // # new; node adding counts when summing node density from element density
+    PetscScalar *gacc; // gravity accleration
 };
 
 #endif

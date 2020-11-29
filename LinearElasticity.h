@@ -39,12 +39,13 @@ class LinearElasticity {
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
         PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2, Vec xPassive3);  // # modified
+        Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
 
     // Compute objective and constraints for the optimiation
     PetscErrorCode ComputeObjectiveConstraints (PetscScalar *fx,
         PetscScalar *gx, Vec xPhys, PetscScalar Emin, PetscScalar Emax,
-        PetscScalar penal, PetscScalar volfrac);
+        PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
+        Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
 
     // Compute sensitivities
     PetscErrorCode ComputeSensitivities (Vec dfdx, Vec dgdx, Vec xPhys,
@@ -91,11 +92,17 @@ class LinearElasticity {
     PetscScalar nu; // Possions ratio
 
     // Number of load domains
-    PetscInt nl;
+    PetscInt nl;  // # new
+
+    // Element dimensions
+    PetscScalar dx, dy, dz;  // # new
 
     // Set up the FE mesh and data structures
-    PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
-        Vec xPassive2, Vec xPassive3); // # modified
+    PetscErrorCode SetUpNodalMesh (DM da_nodes); // # modified
+
+    // Set up the FE mesh and data structures
+    PetscErrorCode SetUpLoadAndBC (Vec xPassive0, Vec xPassive1, Vec xPassive2,
+        Vec xPassive3); // # modified
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
@@ -133,7 +140,7 @@ class LinearElasticity {
         PetscScalar zeta, PetscScalar *dNdxi, PetscScalar *dNdeta,
         PetscScalar *dNdzeta);
     PetscScalar Inverse3M (PetscScalar J[][3], PetscScalar invJ[][3]);
-#endif
+    #endif
 
     PetscScalar Dot (PetscScalar *v1, PetscScalar *v2, PetscInt l);
 
