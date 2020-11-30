@@ -13,7 +13,8 @@
  * Modified by Zhidong Brian Zhang in August 2020, University of Waterloo
  */
 
-LinearCompliant::LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
+LinearCompliant::LinearCompliant (DM da_nodes, PetscInt m, PetscInt numLoads,
+    Vec xPassive0,
     Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   // Set pointers to null
   K = NULL;
@@ -30,20 +31,24 @@ LinearCompliant::LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
   PetscOptionsGetInt (NULL, NULL, "-nlvls", &nlvls, &flg);
   PetscOptionsGetReal (NULL, NULL, "-nu", &nu, &flg);
 
-  nl = numLoads; // save for internal uses
+  this->m = m;
+  this->numLoads = numLoads; // save for internal uses
   Sv = NULL;
+
+  U = new Vec[numLoads];
+  RHS = new Vec[numLoads];
+  N = new Vec[numLoads];
 
   // Setup sitffness matrix, load vector and bcs (Dirichlet) for the design
   // problem
-  SetUpNodalMesh (da_nodes);
+  SetUpLoadAndBC (da_nodes, xPassive0, xPassive1, xPassive2, xPassive3);
 }
 
 LinearCompliant::~LinearCompliant () {
 // Deallocate
-  VecDestroyVecs (nl, &(U));
-//  VecDestroy (&(U));
-  VecDestroy (&(RHS));
-  VecDestroy (&(N));
+  VecDestroyVecs (numLoads, &(U));
+  VecDestroyVecs (numLoads, &(RHS));
+  VecDestroyVecs (numLoads, &(N));
   MatDestroy (&(K));
   KSPDestroy (&(ksp));
 
@@ -54,7 +59,9 @@ LinearCompliant::~LinearCompliant () {
   VecDestroy (&(Sv));
 }
 
-PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
+PetscErrorCode LinearCompliant::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
+    Vec xPassive1,
+    Vec xPassive2, Vec xPassive3) {
   PetscErrorCode ierr = 0;
 
 #if  DIM ==2
@@ -86,9 +93,9 @@ PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
 
     // Use the first element to compute the dx, dy, dz
     dx = lcoorp[DIM * necon[0 * nen + 1] + 0]
-        - lcoorp[DIM * necon[0 * nen + 0] + 0];
+         - lcoorp[DIM * necon[0 * nen + 0] + 0];
     dy = lcoorp[DIM * necon[0 * nen + 2] + 1]
-        - lcoorp[DIM * necon[0 * nen + 1] + 1];
+         - lcoorp[DIM * necon[0 * nen + 1] + 1];
     VecRestoreArray (lcoor, &lcoorp);
 
     nn[0] = M;
@@ -119,11 +126,12 @@ PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
   // Allocate matrix and the RHS and Solution vector and Dirichlet vector
   ierr = DMCreateMatrix (da_nodal, &(K));
   CHKERRQ(ierr);
-  ierr = DMCreateGlobalVector (da_nodal, &(N));
+  ierr = DMCreateGlobalVector (da_nodal, &(U[0]));
   CHKERRQ(ierr);
-  VecDuplicate (N, &(RHS));
-  VecDuplicateVecs (N, nl, &(U));
-  VecDuplicate (N, &(Sv)); // zzd newly added
+  VecDuplicateVecs (U[0], numLoads, &(U));
+  VecDuplicateVecs (U[0], numLoads, &(RHS));
+  VecDuplicateVecs (U[0], numLoads, &(N));
+  VecDuplicate (U[0], &(Sv));
 
   // Set the local stiffness matrix
   PetscScalar X[4] = { 0.0, dx, dx, 0.0 };
@@ -135,6 +143,148 @@ PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
   // Save the element size for other uses
   this->dx = dx;
   this->dy = dy;
+
+  // Set the RHS and Dirichlet vector
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    VecSet (N[loadCondition], 1.0);
+    VecSet (RHS[loadCondition], 0.0);
+  }
+  // Set the spring vector
+  VecSet (Sv, 0.0);
+
+  // Global coordinates and a pointer
+  Vec lcoor; // borrowed ref - do not destroy!
+  PetscScalar *lcoorp;
+
+  // Get local coordinates in local node numbering including ghosts
+  ierr = DMGetCoordinatesLocal (da_nodal, &lcoor);
+  CHKERRQ(ierr);
+  VecGetArray (lcoor, &lcoorp);
+
+  // Get local dof number
+  PetscInt nn;
+  VecGetSize (lcoor, &nn);
+
+  // Compute epsilon parameter for finding points in space:
+  PetscScalar epsi = PetscMin(dx * 0.05, dy * 0.05);
+  // Passive design variable vector
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
+  VecGetArray (xPassive0, &xPassive0p);
+  VecGetArray (xPassive1, &xPassive1p);
+  VecGetArray (xPassive2, &xPassive2p);
+  VecGetArray (xPassive3, &xPassive3p);
+
+  // Set the RHS and Dirichlet vector
+  //  PetscScalar rhs_ele[8]; // local rhs
+  PetscScalar n_ele[8]; // local n
+  PetscInt edof[8];
+
+  // Find the element size
+  PetscInt nel, nen;
+  const PetscInt *necon;
+  DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
+
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    if (IMPORT_GEO == 0) {
+      // Set the values:
+      // In this case: N = the four corners at x=xmin is clamped
+      // Force in: RHS(z) = 1 at (x=xmin,y=ymin,z=zmax)
+      // Force out: RHS(z) = -1 at (x=xmax,y=ymax,z=zmax);
+      PetscScalar LoadIntensity = 1;
+      PetscScalar springStiff = 0.1;
+      for (PetscInt i = 0; i < nn; i++) {
+        // Make a four corners at x=xmin with all dofs clamped
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+            && lcoorp[i + 1] < xc[2] + 5 * dy) {
+          VecSetValueLocal (N[loadCondition], i, 0.0, INSERT_VALUES);
+          VecSetValueLocal (N[loadCondition], i + 1, 0.0, INSERT_VALUES);
+        }
+        // Make symmetric at y=ymax
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i + 1, 0.0, INSERT_VALUES);
+        }
+        // Input point load
+        if (loadCondition == 0) { //Fin
+          if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, LoadIntensity,
+                INSERT_VALUES);
+          }
+        } else if (loadCondition == 1) {
+          if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, -1.0, INSERT_VALUES);
+          }
+        }
+        // External spring
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
+        }
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
+            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
+        }
+      }
+    } else {
+      // Load and constraints, xPassive1 indicates fix
+      PetscScalar LoadIntensity = 1.0;
+      PetscScalar springStiff = 0.1;
+      for (PetscInt i = 0; i < nn; i++) {
+        // Make symmetric at y=ymax
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i + 1, 0.0, INSERT_VALUES);
+        }
+        // Input point load
+        if (loadCondition == 0) { //Fin
+          if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, LoadIntensity,
+                INSERT_VALUES);
+          }
+        } else if (loadCondition == 1) {
+          if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, -1.0, INSERT_VALUES);
+          }
+        }
+
+        // External spring
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
+        }
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
+            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
+        }
+      }
+      VecAssemblyBegin (N[loadCondition]);
+      VecAssemblyEnd (N[loadCondition]);
+      // Constraints, make xPassive1 domain all dofs clamped
+      for (PetscInt i = 0; i < nel; i++) {
+        memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
+        // Global dof in the RHS vector
+        for (PetscInt l = 0; l < nen; l++) {
+          for (PetscInt m = 0; m < 2; m++) {
+            edof[l * 2 + m] = 2 * necon[i * nen + l] + m; // dof in globe
+          }
+        }
+        if (xPassive1p[i] != 0) {
+          for (PetscInt j = 0; j < 8; j++) {
+            n_ele[j] = 0.0;
+          }
+          ierr = VecSetValuesLocal (N[loadCondition], 8, edof, n_ele,
+              INSERT_VALUES);
+          CHKERRQ(ierr);
+        }
+      }
+    }
+    VecAssemblyBegin (N[loadCondition]);
+    VecAssemblyEnd (N[loadCondition]);
+    VecAssemblyBegin (RHS[loadCondition]);
+    VecAssemblyEnd (RHS[loadCondition]);
+  }
 
 #elif DIM == 3
   // Extract information from input DM and create one for the linear elasticity
@@ -165,11 +315,11 @@ PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
 
     // Use the first element to compute the dx, dy, dz
     dx = lcoorp[3 * necon[0 * nen + 1] + 0]
-        - lcoorp[3 * necon[0 * nen + 0] + 0];
+         - lcoorp[3 * necon[0 * nen + 0] + 0];
     dy = lcoorp[3 * necon[0 * nen + 2] + 1]
-        - lcoorp[3 * necon[0 * nen + 1] + 1];
+         - lcoorp[3 * necon[0 * nen + 1] + 1];
     dz = lcoorp[3 * necon[0 * nen + 4] + 2]
-        - lcoorp[3 * necon[0 * nen + 0] + 2];
+         - lcoorp[3 * necon[0 * nen + 0] + 2];
     VecRestoreArray (lcoor, &lcoorp);
 
     nn[0] = M;
@@ -206,11 +356,12 @@ PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
   // Allocate matrix and the RHS and Solution vector and Dirichlet vector
   ierr = DMCreateMatrix (da_nodal, &(K));
   CHKERRQ(ierr);
-  ierr = DMCreateGlobalVector (da_nodal, &(N));
+  ierr = DMCreateGlobalVector (da_nodal, &(U[0]));
   CHKERRQ(ierr);
-  VecDuplicate (N, &(RHS));
-  VecDuplicateVecs (N, nl, &(U));
-  VecDuplicate (N, &(Sv)); // zzd newly added
+  VecDuplicateVecs (U[0], numLoads, &(U));
+  VecDuplicateVecs (U[0], numLoads, &(RHS));
+  VecDuplicateVecs (U[0], numLoads, &(N));
+  VecDuplicate (U[0], &(Sv));
 
   // Set the local stiffness matrix
   PetscScalar X[8] = { 0.0, dx, dx, 0.0, 0.0, dx, dx, 0.0 };
@@ -224,151 +375,12 @@ PetscErrorCode LinearCompliant::SetUpNodalMesh (DM da_nodes) {
   this->dx = dx;
   this->dy = dy;
   this->dz = dz;
-#endif
-
-  return ierr;
-}
-
-PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
-    Vec xPassive2, Vec xPassive3, PetscInt loadStep) {
-  PetscErrorCode ierr = 0;
-
-#if  DIM ==2
-  // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
-
-  // Global coordinates and a pointer
-  Vec lcoor; // borrowed ref - do not destroy!
-  PetscScalar *lcoorp;
-
-  // Get local coordinates in local node numbering including ghosts
-  ierr = DMGetCoordinatesLocal (da_nodal, &lcoor);
-  CHKERRQ(ierr);
-  VecGetArray (lcoor, &lcoorp);
-
-  // Get local dof number
-  PetscInt nn;
-  VecGetSize (lcoor, &nn);
-
-  // Compute epsilon parameter for finding points in space:
-  PetscScalar epsi = PetscMin(dx * 0.05, dy * 0.05);
-  // Passive design variable vector
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
-  VecGetArray (xPassive0, &xPassive0p);
-  VecGetArray (xPassive1, &xPassive1p);
-  VecGetArray (xPassive2, &xPassive2p);
-  VecGetArray (xPassive3, &xPassive3p);
 
   // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
-//  PetscScalar rhs_ele[8]; // local rhs
-  PetscScalar n_ele[8]; // local n
-  PetscInt edof[8];
-
-  // Find the element size
-  PetscInt nel, nen;
-  const PetscInt *necon;
-  DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
-
-  if (IMPORT_GEO == 0) {
-    // Set the values:
-    // In this case: N = the four corners at x=xmin is clamped
-    // Force in: RHS(z) = 1 at (x=xmin,y=ymin,z=zmax)
-    // Force out: RHS(z) = -1 at (x=xmax,y=ymax,z=zmax);
-    PetscScalar LoadIntensity = 1;
-    PetscScalar springStiff = 0.1;
-    for (PetscInt i = 0; i < nn; i++) {
-      // Make a four corners at x=xmin with all dofs clamped
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-          && lcoorp[i + 1] < xc[2] + 5 * dy) {
-        VecSetValueLocal (N, i, 0.0, INSERT_VALUES);
-        VecSetValueLocal (N, i + 1, 0.0, INSERT_VALUES);
-      }
-      // Make symmetric at y=ymax
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (N, i + 1, 0.0, INSERT_VALUES);
-      }
-      // Input point load
-      if (loadStep == 0) { //Fin
-        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-          VecSetValueLocal (RHS, i, LoadIntensity, INSERT_VALUES);
-        }
-      } else if (loadStep == 1) {
-        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
-            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-          VecSetValueLocal (RHS, i, -1.0, INSERT_VALUES);
-        }
-      }
-      // External spring
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-    }
-  } else {
-    // Load and constraints, xPassive1 indicates fix
-    PetscScalar LoadIntensity = 1.0;
-    PetscScalar springStiff = 0.1;
-    for (PetscInt i = 0; i < nn; i++) {
-      // Make symmetric at y=ymax
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (N, i + 1, 0.0, INSERT_VALUES);
-      }
-      // Input point load
-      if (loadStep == 0) { //Fin
-        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-          VecSetValueLocal (RHS, i, LoadIntensity, INSERT_VALUES);
-        }
-      } else if (loadStep == 1) {
-        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
-            && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-          VecSetValueLocal (RHS, i, -1.0, INSERT_VALUES);
-        }
-      }
-
-      // External spring
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-    }
-    VecAssemblyBegin (N);
-    VecAssemblyEnd (N);
-    // Constraints, make xPassive1 domain all dofs clamped
-    for (PetscInt i = 0; i < nel; i++) {
-      memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
-      // Global dof in the RHS vector
-      for (PetscInt l = 0; l < nen; l++) {
-        for (PetscInt m = 0; m < 2; m++) {
-          edof[l * 2 + m] = 2 * necon[i * nen + l] + m; // dof in globe
-        }
-      }
-      if (xPassive1p[i] == 1) {
-        for (PetscInt j = 0; j < 8; j++) {
-          n_ele[j] = 0.0;
-        }
-        ierr = VecSetValuesLocal (N, 8, edof, n_ele, INSERT_VALUES);
-        CHKERRQ(ierr);
-      }
-    }
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    VecSet (N[loadCondition], 1.0);
+    VecSet (RHS[loadCondition], 0.0);
   }
-
-#elif DIM == 3
-  // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
   // Set the spring vector
   VecSet (Sv, 0.0);
 
@@ -396,9 +408,9 @@ PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
   VecGetArray (xPassive3, &xPassive3p);
 
   // Set the local RHS and Dirichlet vector
-//  PetscScalar rhs_ele[24]; // local rhs
+  //  PetscScalar rhs_ele[24]; // local rhs
   PetscScalar n_ele[24]; // local n
-//  PetscScalar sv_ele[24]; // local n
+  //  PetscScalar sv_ele[24]; // local n
   PetscInt edof[24];
 
   // Find the element size
@@ -406,122 +418,134 @@ PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
   const PetscInt *necon;
   DMDAGetElements_3D (da_nodal, &nel, &nen, &necon);
 
-  if (IMPORT_GEO == 0) {
-    // Set the values:
-    // In this case: N = the four corners at x=xmin is clamped
-    // Force in: RHS(z) = 1 at (x=xmin,y=ymin,z=zmax)
-    // Force out: RHS(z) = -1 at (x=xmax,y=ymax,z=zmax);
-    PetscScalar LoadIntensity = 1.0;
-    PetscScalar springStiff = 0.1;
-    for (PetscInt i = 0; i < nn; i++) {
-      // Make a four corners at x=xmin with all dofs clamped
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-          && lcoorp[i + 1] < xc[2] + 5 * dy
-          && PetscAbsScalar(lcoorp[i + 2] - xc[5]) < epsi) {
-        VecSetValueLocal (N, i, 0.0, INSERT_VALUES);
-        VecSetValueLocal (N, i + 1, 0.0, INSERT_VALUES);
-        VecSetValueLocal (N, i + 2, 0.0, INSERT_VALUES);
-      }
-      // Make symmetric at y=ymax
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (N, i + 1, 0.0, INSERT_VALUES);
-      }
-      // Make symmetric at z=zmin
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-        VecSetValueLocal (N, i + 2, 0.0, INSERT_VALUES);
-      }
-      // Input point load
-      if (loadStep == 0) { //Fin
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    if (IMPORT_GEO == 0) {
+      // Set the values:
+      // In this case: N = the four corners at x=xmin is clamped
+      // Force in: RHS(z) = 1 at (x=xmin,y=ymin,z=zmax)
+      // Force out: RHS(z) = -1 at (x=xmax,y=ymax,z=zmax);
+      PetscScalar LoadIntensity = 1.0;
+      PetscScalar springStiff = 0.1;
+      for (PetscInt i = 0; i < nn; i++) {
+        // Make a four corners at x=xmin with all dofs clamped
+        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+            && lcoorp[i + 1] < xc[2] + 5 * dy
+            && PetscAbsScalar (lcoorp[i + 2] - xc[5]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i, 0.0, INSERT_VALUES);
+          VecSetValueLocal (N[loadCondition], i + 1, 0.0, INSERT_VALUES);
+          VecSetValueLocal (N[loadCondition], i + 2, 0.0, INSERT_VALUES);
+        }
+        // Make symmetric at y=ymax
+        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i + 1, 0.0, INSERT_VALUES);
+        }
+        // Make symmetric at z=zmin
+        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i + 2, 0.0, INSERT_VALUES);
+        }
+        // Input point load
+        if (loadCondition == 0) { //Fin
+          if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
+              && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, LoadIntensity,
+                INSERT_VALUES);
+          }
+        } else if (loadCondition == 1) {
+          if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
+              && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, -1.0, INSERT_VALUES);
+          }
+        }
+        // External spring
         if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
             && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
             && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-          VecSetValueLocal (RHS, i, LoadIntensity, INSERT_VALUES);
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
         }
-      } else if (loadStep == 1) {
         if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
             && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
             && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-          VecSetValueLocal (RHS, i, -1.0, INSERT_VALUES);
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
         }
       }
-      // External spring
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
-          && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
-          && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-    }
-  } else {
-     // Load and constraints, xPassive1 indicates fix
-    PetscScalar LoadIntensity = 1.0;
-    PetscScalar springStiff = 0.1;
-    for (PetscInt i = 0; i < nn; i++) {
-      // Make symmetric at y=ymax
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
-        VecSetValueLocal (N, i + 1, 0.0, INSERT_VALUES);
-      }
-      // Make symmetric at z=zmin
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-        VecSetValueLocal (N, i + 2, 0.0, INSERT_VALUES);
-      }
-      // Input point load
-      if (loadStep == 0) { //Fin
+    } else {
+      // Load and constraints, xPassive1 indicates fix
+      PetscScalar LoadIntensity = 1.0;
+      PetscScalar springStiff = 0.1;
+      for (PetscInt i = 0; i < nn; i++) {
+        // Make symmetric at y=ymax
+        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i + 1, 0.0, INSERT_VALUES);
+        }
+        // Make symmetric at z=zmin
+        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
+          VecSetValueLocal (N[loadCondition], i + 2, 0.0, INSERT_VALUES);
+        }
+        // Input point load
+        if (loadCondition == 0) { //Fin
+          if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
+              && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, LoadIntensity,
+                INSERT_VALUES);
+          }
+        } else if (loadCondition == 1) {
+          if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
+              && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
+              && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
+            VecSetValueLocal (RHS[loadCondition], i, -1.0, INSERT_VALUES);
+          }
+        }
+        // External spring
         if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
             && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
             && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-          VecSetValueLocal (RHS, i, LoadIntensity, INSERT_VALUES);
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
         }
-      } else if (loadStep == 1) {
         if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
             && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
             && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-          VecSetValueLocal (RHS, i, -1.0, INSERT_VALUES);
+          VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
         }
       }
-      // External spring
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[0]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
-          && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
-      }
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi
-          && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi
-          && PetscAbsScalar (lcoorp[i + 2] - xc[4]) < epsi) {
-        VecSetValueLocal (Sv, i, springStiff, INSERT_VALUES); // external spring
+      VecAssemblyBegin (N[loadCondition]);
+      VecAssemblyEnd (N[loadCondition]);
+      // Constraints, make xPassive1 domain all dofs clamped
+      for (PetscInt i = 0; i < nel; i++) {
+        memset (n_ele, 0.0, sizeof(n_ele[0]) * 24);
+        // Global dof in the RHS vector
+        for (PetscInt l = 0; l < nen; l++) {
+          for (PetscInt m = 0; m < 3; m++) {
+            edof[l * 3 + m] = 3 * necon[i * nen + l] + m; // dof in globe
+          }
+        }
+        if (xPassive1p[i] != 0 ) {
+          for (PetscInt j = 0; j < 24; j++) {
+            n_ele[j] = 0.0;
+          }
+          ierr = VecSetValuesLocal (N[loadCondition], 24, edof, n_ele,
+              INSERT_VALUES);
+          CHKERRQ(ierr);
+        }
       }
     }
-    VecAssemblyBegin (N);
-    VecAssemblyEnd (N);
-    // Constraints, make xPassive1 domain all dofs clamped
-    for (PetscInt i = 0; i < nel; i++) {
-      memset (n_ele, 0.0, sizeof(n_ele[0]) * 24);
-      // Global dof in the RHS vector
-      for (PetscInt l = 0; l < nen; l++) {
-        for (PetscInt m = 0; m < 3; m++) {
-          edof[l * 3 + m] = 3 * necon[i * nen + l] + m; // dof in globe
-        }
-      }
-      if (xPassive1p[i] == 1) {
-        for (PetscInt j = 0; j < 24; j++) {
-          n_ele[j] = 0.0;
-        }
-        ierr = VecSetValuesLocal (N, 24, edof, n_ele, INSERT_VALUES);
-        CHKERRQ(ierr);
-      }
-    }
+    VecAssemblyBegin (N[loadCondition]);
+    VecAssemblyEnd (N[loadCondition]);
+    VecAssemblyBegin (RHS[loadCondition]);
+    VecAssemblyEnd (RHS[loadCondition]);
   }
+
 #endif
 
   // Restore vectors
-  VecAssemblyBegin (N);
-  VecAssemblyEnd (N);
-  VecAssemblyBegin (RHS);
-  VecAssemblyEnd (RHS);
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    VecAssemblyBegin (N[loadCondition]);
+    VecAssemblyEnd (N[loadCondition]);
+    VecAssemblyBegin (RHS[loadCondition]);
+    VecAssemblyEnd (RHS[loadCondition]);
+  }
   VecRestoreArray (lcoor, &lcoorp);
   DMDARestoreElements (da_nodal, &nel, &nen, &necon);
   VecAssemblyBegin (Sv);
@@ -535,7 +559,7 @@ PetscErrorCode LinearCompliant::SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
 }
 
 PetscErrorCode LinearCompliant::SolveState (Vec xPhys, PetscScalar Emin,
-    PetscScalar Emax, PetscScalar penal, PetscInt loadStep) {
+    PetscScalar Emax, PetscScalar penal, PetscInt loadCondition) {
 
   PetscErrorCode ierr;
 
@@ -543,7 +567,7 @@ PetscErrorCode LinearCompliant::SolveState (Vec xPhys, PetscScalar Emin,
   t1 = MPI_Wtime ();
 
   // Assemble the stiffness matrix
-  ierr = AssembleStiffnessMatrix (xPhys, Emin, Emax, penal);
+  ierr = AssembleStiffnessMatrix (xPhys, Emin, Emax, penal, loadCondition);
   CHKERRQ(ierr);
 
   // Setup the solver
@@ -557,7 +581,7 @@ PetscErrorCode LinearCompliant::SolveState (Vec xPhys, PetscScalar Emin,
   }
 
   // Solve
-  ierr = KSPSolve (ksp, RHS, U[loadStep]); //zzd
+  ierr = KSPSolve (ksp, RHS[loadCondition], U[loadCondition]);
   CHKERRQ(ierr);
 
   // DEBUG
@@ -567,7 +591,7 @@ PetscErrorCode LinearCompliant::SolveState (Vec xPhys, PetscScalar Emin,
   KSPGetIterationNumber (ksp, &niter);
   KSPGetResidualNorm (ksp, &rnorm);
   PetscReal RHSnorm;
-  ierr = VecNorm (RHS, NORM_2, &RHSnorm);
+  ierr = VecNorm (RHS[loadCondition], NORM_2, &RHSnorm);
   CHKERRQ(ierr);
   rnorm = rnorm / RHSnorm;
 
@@ -579,16 +603,16 @@ PetscErrorCode LinearCompliant::SolveState (Vec xPhys, PetscScalar Emin,
 }
 
 PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
-    PetscScalar *fx, PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys,
+    PetscScalar *fx, PetscScalar *gx, Vec dfdx, Vec *dgdx, Vec xPhys,
     PetscScalar Emin, PetscScalar Emax, PetscScalar penal, PetscScalar volfrac,
     Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   // Errorcode
   PetscErrorCode ierr;
 
   // Solve state eqs
-  for (int i = 0; i < nl; ++i) { // loop over number of loads
-    ierr = SetUpLoadAndBC (xPassive0, xPassive1, xPassive2, xPassive3, i);
-    ierr = SolveState (xPhys, Emin, Emax, penal, i);
+  for (PetscInt loadCondition = 0; loadCondition < numLoads;
+      ++loadCondition) { // loop over number of loads
+    ierr = SolveState (xPhys, Emin, Emax, penal, loadCondition);
     CHKERRQ(ierr);
   }
 
@@ -616,21 +640,34 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   // Get Solution
   Vec Uloctmp, *Uloc;
   DMCreateLocalVector (da_nodal, &Uloctmp);
-  VecDuplicateVecs (Uloctmp, nl, &Uloc);
-  for (int i = 0; i < nl; ++i) { // loop over number of loads
+  VecDuplicateVecs (Uloctmp, numLoads, &Uloc);
+  for (int i = 0; i < numLoads; ++i) { // loop over number of loads
     DMGlobalToLocalBegin (da_nodal, U[i], INSERT_VALUES, Uloc[i]);
     DMGlobalToLocalEnd (da_nodal, U[i], INSERT_VALUES, Uloc[i]);
   }
 
   // get pointer to local vector
   PetscScalar **up;
-  VecGetArrays (Uloc, nl, &up);
+  VecGetArrays (Uloc, numLoads, &up);
 
   // Get dfdx
   PetscScalar *df;
   VecGetArray (dfdx, &df);
 
-  // Get Sv, the spring vector, zzd added
+  // Get dgdx
+  PetscScalar **dg;
+  for (PetscInt i = 0; i < m; ++i) {
+    VecSet (dgdx[i], 0);
+    gx[i] = 0;
+  }
+  VecGetArrays (dgdx, m, &dg);
+
+  // Number of total elements and nonDesign domain elements
+  PetscInt neltot = 0;
+  PetscScalar nNonDesign = 0; // # new
+  VecGetSize (xPhys, &neltot); // # modified
+
+  // Get Sv, the spring vector
   PetscScalar *svp;
   Vec Svloc;
   VecDuplicate (Uloctmp, &Svloc);
@@ -638,16 +675,15 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   DMGlobalToLocalEnd (da_nodal, Sv, INSERT_VALUES, Svloc);
   VecGetArray (Svloc, &svp);
 
-  // Edof array, zzd
+  // Edof array
   PetscInt edof[nedof];
 
   fx[0] = 0.0;
-  // Loop over elements, zzd
+  // Loop over elements
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
     if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0
         && xPassive3p[i] == 0) {
-
       for (PetscInt j = 0; j < nen; j++) {
         // Get local dofs
         for (PetscInt k = 0; k < DIM; k++) {
@@ -671,10 +707,17 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
       fx[0] += (Emin + PetscPowScalar(xp[i], penal) * (Emax - Emin)) * uKu;
       // Set the Senstivity
       df[i] = penal * PetscPowScalar(xp[i], penal - 1) * (Emax - Emin) * uKu;
+      // # new; Constraints
+      for (PetscInt j = 0; j < m; ++j) {
+        gx[j] += xp[i];
+        dg[j][i] = 1;
+      }
     } else if (xPassive0p[i] == 1) {
       df[i] = 1.0E9;
-    } else if (xPassive1p[i] == 1 || xPassive2p[i] == 1 || xPassive3p[i] == 1) {
+      nNonDesign += 1;
+    } else if (xPassive1p[i] != 0 || xPassive2p[i] != 0 || xPassive3p[i] == 1) {
       df[i] = -1.0E9;
+      nNonDesign += 1;
     }
   }
 
@@ -683,71 +726,31 @@ PetscErrorCode LinearCompliant::ComputeObjectiveConstraintsSensitivities (
   fx[0] = 0.0;
   MPI_Allreduce(&tmp, &(fx[0]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
 
-  // Get mash vectors to exclude the non design domain from dgdx (no better way?) zzd newly added
-  Vec tmpVec0, tmpVec1, tmpVec2, tmpVec3;
-  VecDuplicate (dgdx, &tmpVec0);
-  VecCopy (xPassive0, tmpVec0);
-  VecShift (tmpVec0, -1);
-  VecScale (tmpVec0, -1);
-  VecDuplicate (dgdx, &tmpVec1);
-  VecCopy (xPassive1, tmpVec1);
-  VecShift (tmpVec1, -1);
-  VecScale (tmpVec1, -1);
-  VecDuplicate (dgdx, &tmpVec2);
-  VecCopy (xPassive2, tmpVec2);
-  VecShift (tmpVec2, -1);
-  VecScale (tmpVec2, -1);
-  VecDuplicate (dgdx, &tmpVec3);
-  VecCopy (xPassive3, tmpVec3);
-  VecShift (tmpVec3, -1);
-  VecScale (tmpVec3, -1);
-
-  // Get tmp xPhys, excluding all non design domain
-  Vec tmpxPhys;
-  VecDuplicate (xPhys, &tmpxPhys);
-  VecCopy (xPhys, tmpxPhys);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec0);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec1);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec2);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec3);
-
-  // Compute volume constraint gx[0]
-  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2, nNonDesign3; // zzd newly added
-  VecSum (xPassive0, &nNonDesign0); // zzd newly added
-  VecSum (xPassive1, &nNonDesign1); // zzd newly added
-  VecSum (xPassive2, &nNonDesign2); // zzd newly added
-  VecSum (xPassive3, &nNonDesign3); // zzd newly added
-  PetscInt neltot;
-  VecGetSize (tmpxPhys, &neltot);
-  gx[0] = 0;
-  VecSum (tmpxPhys, &(gx[0]));
-  gx[0] = gx[0]
-      / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3)
-          - volfrac;
-  VecSet (dgdx,
-      1.0 / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3));
-  VecPointwiseMult (dgdx, dgdx, tmpVec0);
-  VecPointwiseMult (dgdx, dgdx, tmpVec1);
-  VecPointwiseMult (dgdx, dgdx, tmpVec2);
-  VecPointwiseMult (dgdx, dgdx, tmpVec3);
+  tmp = nNonDesign; // # new
+  nNonDesign = 0.0; // # new
+  MPI_Allreduce(&tmp, &(nNonDesign), 1, MPIU_SCALAR, MPI_SUM,
+      PETSC_COMM_WORLD); // # new
+  // # modified; Allreduce gx
+  for (PetscInt i = 0; i < m; ++i) {
+    tmp = gx[i];
+    gx[i] = 0.0;
+    MPI_Allreduce(&tmp, &(gx[i]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
+    gx[i] = gx[i]
+            / ((PetscScalar) neltot - nNonDesign)
+            - volfrac; // # modified
+    VecScale (dgdx[i],
+        1.0 / ((PetscScalar) neltot - nNonDesign)); // # modified
+  }
 
   VecRestoreArray (xPhys, &xp);
-  VecRestoreArray (xPassive0, &xPassive0p);
-  VecRestoreArray (xPassive1, &xPassive1p);
-  VecRestoreArray (xPassive2, &xPassive2p);
-  VecRestoreArray (xPassive3, &xPassive3p);
-  VecRestoreArrays (Uloc, nl, &up);
+  VecRestoreArray (xPassive0, &xPassive0p); // # new
+  VecRestoreArray (xPassive1, &xPassive1p); // # new
+  VecRestoreArray (xPassive2, &xPassive2p); // # new
+  VecRestoreArray (xPassive3, &xPassive3p); // # new
+  VecRestoreArrays (Uloc, numLoads, &up);
   VecRestoreArray (dfdx, &df);
-  VecDestroyVecs (nl, &Uloc);
-  VecDestroy (&Uloctmp);
-  VecRestoreArray (Svloc, &svp);
-  VecDestroy (&Svloc);
-
-  VecDestroy (&tmpVec0);
-  VecDestroy (&tmpVec1);
-  VecDestroy (&tmpVec2);
-  VecDestroy (&tmpVec3);
-  VecDestroy (&tmpxPhys);
+  VecRestoreArrays (dgdx, m, &dg);
+  VecDestroyVecs (numLoads, &Uloc);
 
   return (ierr);
 }
@@ -796,7 +799,8 @@ PetscErrorCode LinearCompliant::WriteRestartFiles () {
 //##################################################################
 
 PetscErrorCode LinearCompliant::AssembleStiffnessMatrix (Vec xPhys,
-    PetscScalar Emin, PetscScalar Emax, PetscScalar penal) {
+    PetscScalar Emin, PetscScalar Emax, PetscScalar penal,
+    PetscInt loadCondition) {
 
   PetscErrorCode ierr;
 
@@ -818,11 +822,11 @@ PetscErrorCode LinearCompliant::AssembleStiffnessMatrix (Vec xPhys,
 // Zero the matrix
   MatZeroEntries (K);
 
-// Edof array, zzd
+// Edof array
   PetscInt edof[nedof];
   PetscScalar ke[nedof * nedof];
 
-// Loop over elements, zzd
+// Loop over elements
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
     for (PetscInt j = 0; j < nen; j++) {
@@ -841,7 +845,7 @@ PetscErrorCode LinearCompliant::AssembleStiffnessMatrix (Vec xPhys,
     CHKERRQ(ierr);
   }
 // Add the external spring
-  ierr = MatDiagonalSet (K, Sv, ADD_VALUES); // zzd newly added
+  ierr = MatDiagonalSet (K, Sv, ADD_VALUES);
   CHKERRQ(ierr);
 
   MatAssemblyBegin (K, MAT_FINAL_ASSEMBLY);
@@ -849,17 +853,17 @@ PetscErrorCode LinearCompliant::AssembleStiffnessMatrix (Vec xPhys,
 
 // Impose the dirichlet conditions, i.e. K = N'*K*N - (N-I)
 // 1.: K = N'*K*N
-  MatDiagonalScale (K, N, N);
+  MatDiagonalScale (K, N[loadCondition], N[loadCondition]);
 // 2. Add ones, i.e. K = K + NI, NI = I - N
   Vec NI;
-  VecDuplicate (N, &NI);
+  VecDuplicate (N[loadCondition], &NI);
   VecSet (NI, 1.0);
-  VecAXPY (NI, -1.0, N);
+  VecAXPY (NI, -1.0, N[loadCondition]);
   MatDiagonalSet (K, NI, ADD_VALUES);
 
 // Zero out possible loads in the RHS that coincide
 // with Dirichlet conditions
-  VecPointwiseMult (RHS, RHS, N);
+  VecPointwiseMult (RHS[loadCondition], RHS[loadCondition], N[loadCondition]);
 
   VecDestroy (&NI);
   VecRestoreArray (xPhys, &xp);
@@ -941,8 +945,7 @@ PetscErrorCode LinearCompliant::SetUpSolver () {
 
 // SET THE DEFAULT SOLVER PARAMETERS
 // The fine grid solver settings
-  PetscScalar rtol = 1.0e-5; //zzd tmp
-//  PetscScalar rtol         = 1.0e-5;
+  PetscScalar rtol = 1.0e-5;
   PetscScalar atol = 1.0e-50;
   PetscScalar dtol = 1.0e5;
   PetscInt restart = 100;
@@ -1006,7 +1009,7 @@ PetscErrorCode LinearCompliant::SetUpSolver () {
     // Set 0 to the finest level
     daclist[0] = da_nodal;
 
-    // Coordinates, zzd
+    // Coordinates
 #if DIM == 2
     PetscReal xmin = xc[0], xmax = xc[1], ymin = xc[2], ymax = xc[3];
 #elif DIM == 3
@@ -1286,7 +1289,7 @@ PetscInt LinearCompliant::Quad4Isoparametric (PetscScalar *X, PetscScalar *Y,
         for (PetscInt i = 0; i < 3; i++) {
           for (PetscInt j = 0; j < 2; j++) {
             beta[i][j] = invJ[0][ll] * alpha1[i][j]
-                + invJ[1][ll] * alpha2[i][j];
+                         + invJ[1][ll] * alpha2[i][j];
           }
         }
         // Add contributions to strain-displacement matrix
@@ -1303,7 +1306,7 @@ PetscInt LinearCompliant::Quad4Isoparametric (PetscScalar *X, PetscScalar *Y,
             for (PetscInt l = 0; l < 3; l++) {
 
               ke[j + 8 * i] = ke[j + 8 * i]
-                  + weight * (B[k][i] * C[k][l] * B[l][j]);
+                              + weight * (B[k][i] * C[k][l] * B[l][j]);
             }
           }
         }
@@ -1531,7 +1534,8 @@ PetscInt LinearCompliant::Hex8Isoparametric (PetscScalar *X, PetscScalar *Y,
           for (PetscInt i = 0; i < 6; i++) {
             for (PetscInt j = 0; j < 3; j++) {
               beta[i][j] = invJ[0][ll] * alpha1[i][j]
-                  + invJ[1][ll] * alpha2[i][j] + invJ[2][ll] * alpha3[i][j];
+                           + invJ[1][ll] * alpha2[i][j]
+                           + invJ[2][ll] * alpha3[i][j];
             }
           }
           // Add contributions to strain-displacement matrix
@@ -1548,7 +1552,7 @@ PetscInt LinearCompliant::Hex8Isoparametric (PetscScalar *X, PetscScalar *Y,
               for (PetscInt l = 0; l < 6; l++) {
 
                 ke[j + 24 * i] = ke[j + 24 * i]
-                    + weight * (B[k][i] * C[k][l] * B[l][j]);
+                                 + weight * (B[k][i] * C[k][l] * B[l][j]);
               }
             }
           }
@@ -1597,7 +1601,7 @@ PetscScalar LinearCompliant::Inverse3M (PetscScalar J[][3],
     PetscScalar invJ[][3]) {
 // inverse3M - Computes the inverse of a 3x3 matrix
   PetscScalar detJ = J[0][0] * (J[1][1] * J[2][2] - J[2][1] * J[1][2])
-      - J[0][1] * (J[1][0] * J[2][2] - J[2][0] * J[1][2])
+                     - J[0][1] * (J[1][0] * J[2][2] - J[2][0] * J[1][2])
                      + J[0][2] * (J[1][0] * J[2][1] - J[2][0] * J[1][1]);
   invJ[0][0] = (J[1][1] * J[2][2] - J[2][1] * J[1][2]) / detJ;
   invJ[0][1] = -(J[0][1] * J[2][2] - J[0][2] * J[2][1]) / detJ;

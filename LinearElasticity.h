@@ -28,8 +28,8 @@ class LinearElasticity {
 
   public:
     // Constructor
-    LinearElasticity (DM da_nodes, PetscInt numLoads, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2, Vec xPassive3); //zzd
+    LinearElasticity (DM da_nodes, PetscInt m, PetscInt numLoads, PetscScalar *gacc,
+        Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
 
     // Destructor
     ~LinearElasticity ();
@@ -37,7 +37,7 @@ class LinearElasticity {
     // Compute objective and constraints and sensitivities at once: GOOD FOR
     // SELF_ADJOINT PROBLEMS
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
-        PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
+        PetscScalar *gx, Vec dfdx, Vec *dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
         Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
 
@@ -48,9 +48,10 @@ class LinearElasticity {
         Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
 
     // Compute sensitivities
-    PetscErrorCode ComputeSensitivities (Vec dfdx, Vec dgdx, Vec xPhys,
+    PetscErrorCode ComputeSensitivities (Vec dfdx, Vec *dgdx, Vec xPhys,
         PetscScalar Emin, PetscScalar Emax, PetscScalar penal,
-        PetscScalar volfrac); // needs ....
+        PetscScalar volfrac, Vec xPassive0, Vec xPassive1,
+        Vec xPassive2, Vec xPassive3); // # modified; needs ....
 
     // Restart writer
     PetscErrorCode WriteRestartFiles ();
@@ -76,9 +77,9 @@ class LinearElasticity {
 
     // Linear algebra
     Mat K; // Global stiffness matrix
-    Vec U; // Displacement vector
-    Vec RHS; // Load vector
-    Vec N; // Dirichlet vector (used when imposing BCs)
+    Vec U; // # modified; Displacement vector
+    Vec *RHS; // # modified; Load vector
+    Vec *N; // # modified; Dirichlet vector (used when imposing BCs)
 #if DIM == 2  // # new
     static const PetscInt nedof = 8; // Number of elemental dofs
 #elif DIM == 3  // # new
@@ -91,56 +92,57 @@ class LinearElasticity {
     PetscInt nlvls;
     PetscScalar nu; // Possions ratio
 
-    // Number of load domains
-    PetscInt nl;  // # new
+    // Loading conditions
+    PetscInt numLoads; // # new; number of loading conditions
+    PetscScalar *gacc; // # new; body loading conditions (e.g. gravity accleration)
 
     // Element dimensions
-    PetscScalar dx, dy, dz;  // # new
+    PetscScalar dx, dy, dz; // # new
 
-    // Set up the FE mesh and data structures
-    PetscErrorCode SetUpNodalMesh (DM da_nodes); // # modified
+    // Number of constraints
+    PetscInt m; // # new
 
-    // Set up the FE mesh and data structures
-    PetscErrorCode SetUpLoadAndBC (Vec xPassive0, Vec xPassive1, Vec xPassive2,
-        Vec xPassive3); // # modified
+    // Set up the FE mesh, data structures, and load and boundary conditions
+    PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
+        Vec xPassive2, Vec xPassive3); // # modified
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
-        PetscScalar penal);
+        PetscScalar penal, PetscInt loadCondition); // # modified
 
     // Assemble the stiffness matrix
     PetscErrorCode AssembleStiffnessMatrix (Vec xPhys, PetscScalar Emin,
-        PetscScalar Emax, PetscScalar penal);
+        PetscScalar Emax, PetscScalar penal, PetscInt loadCondition);  // # modified
 
     // Start the solver
     PetscErrorCode SetUpSolver ();
 
 #if DIM == 2    // # new
-    // Routine that doesn't change the element type upon repeated calls, zzd
+    // Routine that doesn't change the element type upon repeated calls
     PetscErrorCode DMDAGetElements_2D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);
 
-    // Methods used to assemble the element stiffness matrix, zzd
+    // Methods used to assemble the element stiffness matrix
     PetscInt Quad4Isoparametric (PetscScalar *X, PetscScalar *Y, PetscScalar nu,
         PetscInt redInt, PetscScalar *ke);
     void DifferentiatedShapeFunctions_2D (PetscScalar xi, PetscScalar eta,
-        PetscScalar *dNdxi, PetscScalar *dNdeta); // zzd
-    PetscScalar Inverse2M (PetscScalar J[][2], PetscScalar invJ[][2]); // zzd
+        PetscScalar *dNdxi, PetscScalar *dNdeta);
+    PetscScalar Inverse2M (PetscScalar J[][2], PetscScalar invJ[][2]);
 
 #elif DIM == 3
-
-    // Routine that doesn't change the element type upon repeated calls, zzd
+    // Routine that doesn't change the element type upon repeated calls
     PetscErrorCode DMDAGetElements_3D (DM dm, PetscInt *nel, PetscInt *nen,
         const PetscInt *e[]);
 
-    // Methods used to assemble the element stiffness matrix, zzd
+    // Methods used to assemble the element stiffness matrix
     PetscInt Hex8Isoparametric (PetscScalar *X, PetscScalar *Y, PetscScalar *Z,
         PetscScalar nu, PetscInt redInt, PetscScalar *ke);
     void DifferentiatedShapeFunctions (PetscScalar xi, PetscScalar eta,
         PetscScalar zeta, PetscScalar *dNdxi, PetscScalar *dNdeta,
         PetscScalar *dNdzeta);
     PetscScalar Inverse3M (PetscScalar J[][3], PetscScalar invJ[][3]);
-    #endif
+
+#endif
 
     PetscScalar Dot (PetscScalar *v1, PetscScalar *v2, PetscInt l);
 

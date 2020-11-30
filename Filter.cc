@@ -469,8 +469,8 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1,
     for (PetscInt j = info.ys; j < info.ys + info.ym; j++) {
       for (PetscInt i = info.xs; i < info.xs + info.xm; i++) {
 
-        if (xPassive0p_2D[j][i] == 1 || xPassive1p_2D[j][i] == 1
-            || xPassive2p_2D[j][i] == 1 || xPassive3p_2D[j][i] == 1) {
+        if (xPassive0p_2D[j][i] != 0 || xPassive1p_2D[j][i] != 0
+            || xPassive2p_2D[j][i] != 0 || xPassive3p_2D[j][i] != 0) {
           PetscInt row = (i - info.gxs) + (j - info.gys) * (info.gxm);
           for (PetscInt j2 = PetscMax(j - info.sw, 0);
               j2 <= PetscMin(j + info.sw, info.my - 1); j2++) {
@@ -657,7 +657,7 @@ PetscErrorCode Filter::SetUp (DM da_nodes, Vec x, Vec xPassive0, Vec xPassive1,
     for (PetscInt k = info.zs; k < info.zs + info.zm; k++) {
       for (PetscInt j = info.ys; j < info.ys + info.ym; j++) {
         for (PetscInt i = info.xs; i < info.xs + info.xm; i++) {
-          if (xPassive0p_3D[k][j][i] == 1 || xPassive1p_3D[k][j][i] == 1 || xPassive2p_3D[k][j][i] == 1 || xPassive3p_3D[k][j][i] == 1) {
+          if (xPassive0p_3D[k][j][i] !=0 || xPassive1p_3D[k][j][i] != 0 || xPassive2p_3D[k][j][i] != 0 || xPassive3p_3D[k][j][i] != 0) {
             PetscInt row = (i - info.gxs) + (j - info.gys) * (info.gxm) + (k - info.gzs) * (info.gxm) * (info.gym);
             for (PetscInt k2 = PetscMax(k - info.sw, 0);
                 k2 <= PetscMin(k + info.sw, info.mz - 1); k2++) {

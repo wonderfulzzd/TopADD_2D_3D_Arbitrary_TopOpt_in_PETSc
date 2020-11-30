@@ -43,11 +43,18 @@ class PrePostProcess {
      */
     ~PrePostProcess ();
 
-    // Voxel occupancy info
+    /*
+     * Voxel occupancy info
+     */
     std::vector<int> occDES;
-    std::vector<int> occFIX;
-    std::vector<int> occLOD;
+    std::vector<std::vector<int>> occFIX;
+    std::vector<std::vector<int>> occLOD;
     std::vector<int> occSLD;
+
+    /*
+     * Number of loading conditions
+     */
+    unsigned int numLoads;
 
     /*
      * Voxel index, the voxel one-dimensional index

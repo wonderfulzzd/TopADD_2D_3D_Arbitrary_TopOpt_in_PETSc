@@ -13,8 +13,9 @@
  * Modified by Zhidong Brian Zhang in August 2020, University of Waterloo
  */
 
-LinearHeatConduction::LinearHeatConduction (DM da_nodes, DM da_elem,
-    PetscInt numLoads, Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) {
+LinearHeatConduction::LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt m,
+    PetscInt numLoads, Vec xPassive0, Vec xPassive1, Vec xPassive2,
+    Vec xPassive3) {
   // Set pointers to null
   K = NULL;
   U = NULL;
@@ -28,16 +29,23 @@ LinearHeatConduction::LinearHeatConduction (DM da_nodes, DM da_elem,
   PetscBool flg;
   PetscOptionsGetInt (NULL, NULL, "-nlvls", &nlvls, &flg);
 
+  this->m = m;
+  this->numLoads = numLoads; // num of loads, save for internal uses
+
+  RHS = new Vec[numLoads];
+  N = new Vec[numLoads];
+
   // Setup heat conductivity matrix, heat load vector and bcs (Dirichlet) for the design
   // problem
-  SetUpLoadAndBC (da_nodes, da_elem, xPassive0, xPassive1, xPassive2, xPassive3);
+  SetUpLoadAndBC (da_nodes, da_elem, xPassive0, xPassive1, xPassive2,
+      xPassive3);
 }
 
 LinearHeatConduction::~LinearHeatConduction () {
   // Deallocate
   VecDestroy (&(U));
-  VecDestroy (&(RHS));
-  VecDestroy (&(N));
+  VecDestroyVecs (numLoads, &(RHS));
+  VecDestroyVecs (numLoads, &(N));
   MatDestroy (&(K));
   KSPDestroy (&(ksp));
 
@@ -53,7 +61,7 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
 #if  DIM == 2
   // Extract information from input DM and create one for the linear elasticity
   // number of nodal dofs: (u,v)
-  PetscInt numnodaldof = 1; // new
+  PetscInt numnodaldof = 1;
 
   // Stencil width: each node connects to a box around it - linear elements
   PetscInt stencilwidth = 1;
@@ -78,8 +86,10 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
     DMDAGetElements_2D (da_nodes, &nel, &nen, &necon);
 
     // Use the first element to compute the dx, dy, dz
-    dx = lcoorp[DIM * necon[0 * nen + 1] + 0] - lcoorp[DIM * necon[0 * nen + 0] + 0];
-    dy = lcoorp[DIM * necon[0 * nen + 2] + 1] - lcoorp[DIM * necon[0 * nen + 1] + 1];
+    dx = lcoorp[DIM * necon[0 * nen + 1] + 0]
+         - lcoorp[DIM * necon[0 * nen + 0] + 0];
+    dy = lcoorp[DIM * necon[0 * nen + 2] + 1]
+         - lcoorp[DIM * necon[0 * nen + 1] + 1];
     VecRestoreArray (lcoor, &lcoorp);
 
     nn[0] = M;
@@ -112,8 +122,8 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   CHKERRQ(ierr);
   ierr = DMCreateGlobalVector (da_nodal, &(U));
   CHKERRQ(ierr);
-  VecDuplicate (U, &(RHS));
-  VecDuplicate (U, &(N));
+  VecDuplicateVecs (U, numLoads, &(RHS));
+  VecDuplicateVecs (U, numLoads, &(N));
 
   // Set the local heat conductivity matrix
   PetscScalar X[4] = { 0.0, dx, dx, 0.0 };
@@ -122,9 +132,15 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   // Compute the element stiffnes matrix - constant due to structured grid
   Quad4Isoparametric (X, Y, false, KE);
 
+  // Save the element size for other uses
+  this->dx = dx;
+  this->dy = dy;
+
   // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    VecSet (N[loadCondition], 1.0);
+    VecSet (RHS[loadCondition], 0.0);
+  }
 
   // Global coordinates and a pointer
   Vec lcoor; // borrowed ref - do not destroy!
@@ -149,8 +165,6 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   VecGetArray (xPassive3, &xPassive3p);
 
   // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
   PetscScalar rhs_ele[4]; // local rhs
   PetscScalar n_ele[4]; // local n
   PetscInt edof[4];
@@ -169,78 +183,82 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   const PetscInt *necon;
   DMDAGetElements_2D (da_nodes, &nel, &nen, &necon);
 
-  if (IMPORT_GEO == 0) {
-    // Set the values:
-    // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
-    //               RHS(z) = 0.001 within the whole domain;
-    PetscScalar LoadIntensity = 0.001;
-    for (PetscInt i = 0; i < nn; i++) {
-      // Make an area with all dofs clamped, (1/4 * 1/4) of the bottom
-      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)) {
-        VecSetValueLocal (N, i / 2, 0.0, INSERT_VALUES);
-      }
-    }
-
-//    for (PetscInt i = 0; i < nn; i++) {
-//          // Make an area with all dofs clamped, (1/4 * 1/4) of the bottom
-//          if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[3]) < epsi && PetscAbsScalar (lcoorp[i] - xc[1]) < epsi ) {
-//            VecSetValueLocal (RHS, i / 2, LoadIntensity, INSERT_VALUES);
-//          }
-//        }
-    // Every point has a thermal load except the clamped area
-    // Since the heat load is a body load, need to loop over elements
-    // So that don't need to adjust the boundaries and the corners
-    for (PetscInt i = 0; i < nel; i++) {
-      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
-
-      // Global dof in the RHS vector
-      for (PetscInt l = 0; l < nen; l++) {
-        edof[l] = necon[i * nen + l]; // dof in globe
-      }
-      for (PetscInt j = 0; j < 4; j++) {
-        rhs_ele[j] = 1.0 / 4 * LoadIntensity;
-      }
-      ierr = VecSetValuesLocal (RHS, 4, edof, rhs_ele, ADD_VALUES);
-      CHKERRQ(ierr);
-    }
-
-  } else {
-    // Set the values:
-    // In this case:
-    // xPassive1 indicates fix,
-    // xPassive2 indicates loading.
-    // Load and constraints
-    PetscScalar LoadIntensity = 0.001;
-    for (PetscInt i = 0; i < nel; i++) {
-      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
-      memset (n_ele, 0.0, sizeof(n_ele[0]) * 4);
-
-      // Global dof in the RHS vector
-      for (PetscInt l = 0; l < nen; l++) {
-        edof[l] = necon[i * nen + l]; // dof in globe
-      }
-      if (xPassive0p[i] == 0) {
-        for (PetscInt j = 0; j < 4; j++) {
-          rhs_ele[j] = LoadIntensity;
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    if (IMPORT_GEO == 0) {
+      // Set the values:
+      // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
+      //               RHS(z) = 0.001 within the whole domain;
+      PetscScalar LoadIntensity = 0.001;
+      for (PetscInt i = 0; i < nn; i++) {
+        // Make an area with all dofs clamped, (1/4 * 1/4) of the bottom
+        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
+            && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)) {
+          VecSetValueLocal (N[loadCondition], i / 2, 0.0, INSERT_VALUES);
         }
-        ierr = VecSetValuesLocal (RHS, 4, edof, rhs_ele, ADD_VALUES);
+      }
+
+      // Every point has a thermal load except the clamped area
+      // Since the heat load is a body load, need to loop over elements
+      // So that don't need to adjust the boundaries and the corners
+      for (PetscInt i = 0; i < nel; i++) {
+        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
+
+        // Global dof in the RHS vector
+        for (PetscInt l = 0; l < nen; l++) {
+          edof[l] = necon[i * nen + l]; // dof in globe
+        }
+        for (PetscInt j = 0; j < 4; j++) {
+          rhs_ele[j] = 1.0 / 4 * LoadIntensity;
+        }
+        ierr = VecSetValuesLocal (RHS[loadCondition], 4, edof, rhs_ele,
+            ADD_VALUES);
         CHKERRQ(ierr);
       }
-      if (xPassive1p[i] == 1) {
-        for (PetscInt j = 0; j < 4; j++) {
-          n_ele[j] = 0.0;
+
+    } else {
+      // Set the values:
+      // In this case:
+      // xPassive1 indicates fix,
+      // xPassive2 indicates loading.
+      // Load and constraints
+      PetscScalar LoadIntensity = 0.001;
+      for (PetscInt i = 0; i < nel; i++) {
+        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
+        memset (n_ele, 0.0, sizeof(n_ele[0]) * 4);
+
+        // Global dof in the RHS vector
+        for (PetscInt l = 0; l < nen; l++) {
+          edof[l] = necon[i * nen + l]; // dof in globe
         }
-        ierr = VecSetValuesLocal (N, 4, edof, n_ele, INSERT_VALUES);
-        CHKERRQ(ierr);
+        if (xPassive0p[i] == 0) {
+          for (PetscInt j = 0; j < 4; j++) {
+            rhs_ele[j] = LoadIntensity;
+          }
+          ierr = VecSetValuesLocal (RHS[loadCondition], 4, edof, rhs_ele,
+              ADD_VALUES);
+          CHKERRQ(ierr);
+        }
+        if (xPassive1p[i] != 0) {
+          for (PetscInt j = 0; j < 4; j++) {
+            n_ele[j] = 0.0;
+          }
+          ierr = VecSetValuesLocal (N[loadCondition], 4, edof, n_ele,
+              INSERT_VALUES);
+          CHKERRQ(ierr);
+        }
       }
     }
+    VecAssemblyBegin (N[loadCondition]);
+    VecAssemblyEnd (N[loadCondition]);
+    VecAssemblyBegin (RHS[loadCondition]);
+    VecAssemblyEnd (RHS[loadCondition]);
   }
 #endif
 
 #if DIM == 3
   // Extract information from input DM and create one for the linear elasticity
   // number of nodal dofs: (u,v,w)
-  PetscInt numnodaldof = 1; // new
+  PetscInt numnodaldof = 1;
 
   // Stencil width: each node connects to a box around it - linear elements
   PetscInt stencilwidth = 1;
@@ -268,11 +286,11 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
 
     // Use the first element to compute the dx, dy, dz
     dx = lcoorp[3 * necon[0 * nen + 1] + 0]
-        - lcoorp[3 * necon[0 * nen + 0] + 0];
+         - lcoorp[3 * necon[0 * nen + 0] + 0];
     dy = lcoorp[3 * necon[0 * nen + 2] + 1]
-        - lcoorp[3 * necon[0 * nen + 1] + 1];
+         - lcoorp[3 * necon[0 * nen + 1] + 1];
     dz = lcoorp[3 * necon[0 * nen + 4] + 2]
-        - lcoorp[3 * necon[0 * nen + 0] + 2];
+         - lcoorp[3 * necon[0 * nen + 0] + 2];
     VecRestoreArray (lcoor, &lcoorp);
 
     nn[0] = M;
@@ -312,8 +330,8 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   CHKERRQ(ierr);
   ierr = DMCreateGlobalVector (da_nodal, &(U));
   CHKERRQ(ierr);
-  VecDuplicate (U, &(RHS));
-  VecDuplicate (U, &(N));
+  VecDuplicateVecs (U, numLoads, &(RHS));
+  VecDuplicateVecs (U, numLoads, &(N));
 
   // Set the local heat conductivity matrix
   PetscScalar X[8] = { 0.0, dx, dx, 0.0, 0.0, dx, dx, 0.0 };
@@ -323,9 +341,16 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   // Compute the element heat conductivity matrix - constant due to structured grid
   Hex8Isoparametric (X, Y, Z, false, KE);
 
+  // # new; Save the element size for other uses
+  this->dx = dx;
+  this->dy = dy;
+  this->dz = dz;
+
   // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    VecSet (N[loadCondition], 1.0);
+    VecSet (RHS[loadCondition], 0.0);
+  }
 
   // Global coordinates and a pointer
   Vec lcoor; // borrowed ref - do not destroy!
@@ -344,15 +369,13 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   PetscScalar epsi = PetscMin(dx * 0.05, PetscMin(dy * 0.05, dz * 0.05));
 
   // Passive design variable vector
-  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, * xPassive3p;
+  PetscScalar *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
   VecGetArray (xPassive0, &xPassive0p);
   VecGetArray (xPassive1, &xPassive1p);
   VecGetArray (xPassive2, &xPassive2p);
   VecGetArray (xPassive3, &xPassive3p);
 
   // Set the RHS and Dirichlet vector
-  VecSet (N, 1.0);
-  VecSet (RHS, 0.0);
   PetscScalar rhs_ele[8]; // local rhs
   PetscScalar n_ele[8]; // local n
   PetscInt edof[8];
@@ -371,78 +394,89 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   const PetscInt *necon;
   DMDAGetElements_3D (da_nodes, &nel, &nen, &necon);
 
-  if (IMPORT_GEO == 0) {
-    // Set the values:
-    // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
-    //               RHS(z) = 0.001 within the whole domain;
-    PetscScalar LoadIntensity = 0.001;
-    for (PetscInt i = 0; i < nn; i++) {
-      // Make an area with all dofs clamped, (1/4 * 1/4) of the
-      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
-          && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)
-          && (lcoorp[i + 2] >= xc[5] / 8.0 * 3 && lcoorp[i + 2]
-              <= xc[5] / 8.0 * 5)) {
-        VecSetValueLocal (N, i / 3, 0.0, INSERT_VALUES);
-      }
-    }
-
-    // Every point has a thermal load except the clamped area
-    // Since the heat load is a body load, need to loop over elements
-    // So that don't need to adjust the boundaries and the corners
-    for (PetscInt i = 0; i < nel; i++) {
-      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
-      memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
-
-      // Global dof in the RHS vector
-      for (PetscInt l = 0; l < nen; l++) {
-        edof[l] = necon[i * nen + l]; // dof in globe
-      }
-      for (PetscInt j = 0; j < 8; j++) {
-        rhs_ele[j] = 1.0 / 8 * LoadIntensity;
-      }
-      ierr = VecSetValuesLocal (RHS, 8, edof, rhs_ele, ADD_VALUES);
-      CHKERRQ(ierr);
-    }
-
-  } else {
-    // Set the values:
-    // In this case:
-    // xPassive1 indicates fix,
-    // xPassive2 indicates loading.
-    // Load and constraints
-    PetscScalar LoadIntensity = 0.001;
-    for (PetscInt i = 0; i < nel; i++) {
-      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
-      memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
-
-      // Global dof in the RHS vector
-      for (PetscInt l = 0; l < nen; l++) {
-        edof[l] = necon[i * nen + l]; // dof in globe
-      }
-      if (xPassive0p[i] == 0) {
-        for (PetscInt j = 0; j < 8; j++) {
-          rhs_ele[j] = LoadIntensity;
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    if (IMPORT_GEO == 0) {
+      // Set the values:
+      // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
+      //               RHS(z) = 0.001 within the whole domain;
+      PetscScalar LoadIntensity = 0.001;
+      for (PetscInt i = 0; i < nn; i++) {
+        // Make an area with all dofs clamped, (1/4 * 1/4) of the
+        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
+            && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)
+            && (lcoorp[i + 2] >= xc[5] / 8.0 * 3 && lcoorp[i + 2]
+                                                    <= xc[5] / 8.0 * 5)) {
+          VecSetValueLocal (N[loadCondition], i / 3, 0.0, INSERT_VALUES);
         }
-        ierr = VecSetValuesLocal (RHS, 8, edof, rhs_ele, ADD_VALUES);
+      }
+
+      // Every point has a thermal load except the clamped area
+      // Since the heat load is a body load, need to loop over elements
+      // So that don't need to adjust the boundaries and the corners
+      for (PetscInt i = 0; i < nel; i++) {
+        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
+        memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
+
+        // Global dof in the RHS vector
+        for (PetscInt l = 0; l < nen; l++) {
+          edof[l] = necon[i * nen + l]; // dof in globe
+        }
+        for (PetscInt j = 0; j < 8; j++) {
+          rhs_ele[j] = 1.0 / 8 * LoadIntensity;
+        }
+        ierr = VecSetValuesLocal (RHS[loadCondition], 8, edof, rhs_ele,
+            ADD_VALUES);
         CHKERRQ(ierr);
       }
-      if (xPassive1p[i] == 1) {
-        for (PetscInt j = 0; j < 8; j++) {
-          n_ele[j] = 0.0;
+
+    } else {
+      // Set the values:
+      // In this case:
+      // xPassive1 indicates fix,
+      // xPassive2 indicates loading.
+      // Load and constraints
+      PetscScalar LoadIntensity = 0.001;
+      for (PetscInt i = 0; i < nel; i++) {
+        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
+        memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
+
+        // Global dof in the RHS vector
+        for (PetscInt l = 0; l < nen; l++) {
+          edof[l] = necon[i * nen + l]; // dof in globe
         }
-        ierr = VecSetValuesLocal (N, 8, edof, n_ele, INSERT_VALUES);
-        CHKERRQ(ierr);
+        if (xPassive0p[i] == 0) {
+          for (PetscInt j = 0; j < 8; j++) {
+            rhs_ele[j] = LoadIntensity;
+          }
+          ierr = VecSetValuesLocal (RHS[loadCondition], 8, edof, rhs_ele,
+              ADD_VALUES);
+          CHKERRQ(ierr);
+        }
+        if (xPassive1p[i] == 1) {
+          for (PetscInt j = 0; j < 8; j++) {
+            n_ele[j] = 0.0;
+          }
+          ierr = VecSetValuesLocal (N[loadCondition], 8, edof, n_ele,
+              INSERT_VALUES);
+          CHKERRQ(ierr);
+        }
       }
     }
+    VecAssemblyBegin (N[loadCondition]);
+    VecAssemblyEnd (N[loadCondition]);
+    VecAssemblyBegin (RHS[loadCondition]);
+    VecAssemblyEnd (RHS[loadCondition]);
   }
-
 #endif
 
   // Restore vectors
-  VecAssemblyBegin (N);
-  VecAssemblyEnd (N);
-  VecAssemblyBegin (RHS);
-  VecAssemblyEnd (RHS);
+  for (PetscInt loadCondition = 0; loadCondition < numLoads;
+      ++loadCondition) {
+    VecAssemblyBegin (N[loadCondition]);
+    VecAssemblyEnd (N[loadCondition]);
+    VecAssemblyBegin (RHS[loadCondition]);
+    VecAssemblyEnd (RHS[loadCondition]);
+  }
   VecRestoreArray (lcoor, &lcoorp);
   VecRestoreArray (elcoor, &elcoorp);
   DMDARestoreElements (da_nodes, &nel, &nen, &necon);
@@ -455,7 +489,7 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
 }
 
 PetscErrorCode LinearHeatConduction::SolveState (Vec xPhys, PetscScalar Emin,
-    PetscScalar Emax, PetscScalar penal) {
+    PetscScalar Emax, PetscScalar penal, PetscInt loadCondition) {
 
   PetscErrorCode ierr;
 
@@ -463,7 +497,7 @@ PetscErrorCode LinearHeatConduction::SolveState (Vec xPhys, PetscScalar Emin,
   t1 = MPI_Wtime ();
 
   // Assemble the heat conductivity matrix
-  ierr = AssembleConductivityMatrix (xPhys, Emin, Emax, penal);
+  ierr = AssembleConductivityMatrix (xPhys, Emin, Emax, penal, loadCondition);
   CHKERRQ(ierr);
 
   // Setup the solver
@@ -477,7 +511,7 @@ PetscErrorCode LinearHeatConduction::SolveState (Vec xPhys, PetscScalar Emin,
   }
 
   // Solve
-  ierr = KSPSolve (ksp, RHS, U);
+  ierr = KSPSolve (ksp, RHS[loadCondition], U);
   CHKERRQ(ierr);
   CHKERRQ(ierr);
 
@@ -488,7 +522,7 @@ PetscErrorCode LinearHeatConduction::SolveState (Vec xPhys, PetscScalar Emin,
   KSPGetIterationNumber (ksp, &niter);
   KSPGetResidualNorm (ksp, &rnorm);
   PetscReal RHSnorm;
-  ierr = VecNorm (RHS, NORM_2, &RHSnorm);
+  ierr = VecNorm (RHS[loadCondition], NORM_2, &RHSnorm);
   CHKERRQ(ierr);
   rnorm = rnorm / RHSnorm;
 
@@ -500,151 +534,139 @@ PetscErrorCode LinearHeatConduction::SolveState (Vec xPhys, PetscScalar Emin,
 }
 
 PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
-    PetscScalar *fx, PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys,
+    PetscScalar *fx, PetscScalar *gx, Vec dfdx, Vec *dgdx, Vec xPhys,
     PetscScalar Emin, PetscScalar Emax, PetscScalar penal, PetscScalar volfrac,
     Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) {
   // Errorcode
   PetscErrorCode ierr;
 
-  // Solve state eqs
-  ierr = SolveState (xPhys, Emin, Emax, penal);
-  CHKERRQ(ierr);
+  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+    // Solve state eqs
+    ierr = SolveState (xPhys, Emin, Emax, penal, loadCondition);
+    CHKERRQ(ierr);
 
-  // Get the FE mesh structure (from the nodal mesh)
-  PetscInt nel, nen;
-  const PetscInt *necon;
+    // Get the FE mesh structure (from the nodal mesh)
+    PetscInt nel, nen;
+    const PetscInt *necon;
 #if DIM == 2
-  ierr = DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
-  CHKERRQ(ierr);
+    ierr = DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
+    CHKERRQ(ierr);
 #elif DIM == 3
-  ierr = DMDAGetElements_3D (da_nodal, &nel, &nen, &necon);
-  CHKERRQ(ierr);
+    ierr = DMDAGetElements_3D (da_nodal, &nel, &nen, &necon);
+    CHKERRQ(ierr);
 #endif
-  // DMDAGetElements(da_nodes,&nel,&nen,&necon); // Still issue with elemtype
-  // change !
+    // DMDAGetElements(da_nodes,&nel,&nen,&necon); // Still issue with elemtype
+    // change !
 
-  // Get pointer to the densities
-  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
-  VecGetArray (xPhys, &xp);
-  VecGetArray (xPassive0, &xPassive0p);
-  VecGetArray (xPassive1, &xPassive1p);
-  VecGetArray (xPassive2, &xPassive2p);
-  VecGetArray (xPassive3, &xPassive3p);
+    // Get pointer to the densities
+    PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
+    VecGetArray (xPhys, &xp);
+    VecGetArray (xPassive0, &xPassive0p);
+    VecGetArray (xPassive1, &xPassive1p);
+    VecGetArray (xPassive2, &xPassive2p);
+    VecGetArray (xPassive3, &xPassive3p);
 
-  // Get Solution
-  Vec Uloc;
-  DMCreateLocalVector (da_nodal, &Uloc);
-  DMGlobalToLocalBegin (da_nodal, U, INSERT_VALUES, Uloc);
-  DMGlobalToLocalEnd (da_nodal, U, INSERT_VALUES, Uloc);
+    // Get Solution
+    Vec Uloc;
+    DMCreateLocalVector (da_nodal, &Uloc);
+    DMGlobalToLocalBegin (da_nodal, U, INSERT_VALUES, Uloc);
+    DMGlobalToLocalEnd (da_nodal, U, INSERT_VALUES, Uloc);
 
-  // get pointer to local vector
-  PetscScalar *up;
-  VecGetArray (Uloc, &up);
+    // get pointer to local vector
+    PetscScalar *up;
+    VecGetArray (Uloc, &up);
 
-  // Get dfdx
-  PetscScalar *df;
-  VecGetArray (dfdx, &df);
+    // Get dfdx
+    PetscScalar *df;
+    VecGetArray (dfdx, &df);
 
-  // Edof array, new
-  PetscInt edof[nedof];
-
-  fx[0] = 0.0;
-  // Loop over elements, new
-  for (PetscInt i = 0; i < nel; i++) {
-    // loop over element nodes
-    if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0 && xPassive3p[i] == 0) {
-
-      for (PetscInt j = 0; j < nen; j++) {
-        // Get local dofs
-        edof[j] = necon[i * nen + j];
-      }
-      // Use SIMP for heat conductivity interpolation
-      PetscScalar uKu = 0.0;
-      for (PetscInt k = 0; k < nedof; k++) {
-        for (PetscInt h = 0; h < nedof; h++) {
-          uKu += up[edof[k]] * KE[k * nedof + h] * up[edof[h]];
-        }
-      }
-      // Add to objective
-      fx[0] += (Emin + PetscPowScalar(xp[i], penal) * (Emax - Emin)) * uKu;
-      // Set the Senstivity
-      df[i] = -1.0 * penal * PetscPowScalar(xp[i], penal - 1) * (Emax - Emin)
-              * uKu;
-    } else if (xPassive0p[i] == 1) {
-      df[i] = 1.0E9;
-    } else if (xPassive1p[i] == 1 || xPassive2p[i] == 1 || xPassive3p[i] == 1) {
-      df[i] = -1.0E9;
+    // Get dgdx
+    PetscScalar **dg;
+    for (PetscInt i = 0; i < m; ++i) {
+      VecSet (dgdx[i], 0);
+      gx[i] = 0;
     }
+    VecGetArrays (dgdx, m, &dg);
+
+    // Number of total elements and nonDesign domain elements
+    PetscInt neltot = 0;
+    PetscScalar nNonDesign = 0;
+    VecGetSize (xPhys, &neltot);
+
+    // Edof array
+    PetscInt edof[nedof];
+
+    fx[0] = 0.0;
+    // Loop over elements
+    for (PetscInt i = 0; i < nel; i++) {
+      // loop over element nodes
+      if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0
+          && xPassive3p[i] == 0) {
+
+        for (PetscInt j = 0; j < nen; j++) {
+          // Get local dofs
+          edof[j] = necon[i * nen + j];
+        }
+        // Use SIMP for heat conductivity interpolation
+        PetscScalar uKu = 0.0;
+        for (PetscInt k = 0; k < nedof; k++) {
+          for (PetscInt h = 0; h < nedof; h++) {
+            uKu += up[edof[k]] * KE[k * nedof + h] * up[edof[h]];
+          }
+        }
+        // Add to objective
+        fx[0] += (Emin + PetscPowScalar(xp[i], penal) * (Emax - Emin)) * uKu;
+        // Set the Senstivity
+        df[i] = -1.0 * penal * PetscPowScalar(xp[i], penal - 1) * (Emax - Emin)
+                * uKu;
+        // Constraints
+        for (PetscInt j = 0; j < m; ++j) {
+          gx[j] += xp[i];
+          dg[j][i] = 1;
+        }
+      } else if (xPassive0p[i] != 0) {
+        df[i] = 1.0E9;
+        nNonDesign += 1;
+      } else if (xPassive1p[i] != 0 || xPassive2p[i] != 0
+                 || xPassive3p[i] != 0) {
+        df[i] = -1.0E9;
+        nNonDesign += 1;
+
+      }
+    }
+
+    // Allreduce fx[0]
+    PetscScalar tmp = fx[0];
+    fx[0] = 0.0;
+    MPI_Allreduce(&tmp, &(fx[0]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
+
+    tmp = nNonDesign;
+    nNonDesign = 0.0;
+    MPI_Allreduce(&tmp, &(nNonDesign), 1, MPIU_SCALAR, MPI_SUM,
+        PETSC_COMM_WORLD);
+
+    // # modified; Allreduce gx
+    for (PetscInt i = 0; i < m; ++i) {
+      tmp = gx[i];
+      gx[i] = 0.0;
+      MPI_Allreduce(&tmp, &(gx[i]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
+      gx[i] = gx[i]
+              / ((PetscScalar) neltot - nNonDesign)
+              - volfrac; // # modified
+      VecScale (dgdx[i],
+          1.0 / ((PetscScalar) neltot - nNonDesign)); // # modified
+    }
+
+    VecRestoreArray (xPhys, &xp);
+    VecRestoreArray (xPassive0, &xPassive0p); // # new
+    VecRestoreArray (xPassive1, &xPassive1p); // # new
+    VecRestoreArray (xPassive2, &xPassive2p); // # new
+    VecRestoreArray (xPassive3, &xPassive3p); // # new
+    VecRestoreArray (Uloc, &up);
+    VecRestoreArray (dfdx, &df);
+    VecRestoreArrays (dgdx, m, &dg);
+    VecDestroy (&Uloc);
   }
-
-  // Allreduce fx[0]
-  PetscScalar tmp = fx[0];
-  fx[0] = 0.0;
-  MPI_Allreduce(&tmp, &(fx[0]), 1, MPIU_SCALAR, MPI_SUM, PETSC_COMM_WORLD);
-
-  // Get mash vectors to exclude the non design domain from dgdx (no better way?) new newly added
-  Vec tmpVec0, tmpVec1, tmpVec2, tmpVec3;
-  VecDuplicate (dgdx, &tmpVec0);
-  VecCopy (xPassive0, tmpVec0);
-  VecShift (tmpVec0, -1);
-  VecScale (tmpVec0, -1);
-  VecDuplicate (dgdx, &tmpVec1);
-  VecCopy (xPassive1, tmpVec1);
-  VecShift (tmpVec1, -1);
-  VecScale (tmpVec1, -1);
-  VecDuplicate (dgdx, &tmpVec2);
-  VecCopy (xPassive2, tmpVec2);
-  VecShift (tmpVec2, -1);
-  VecScale (tmpVec2, -1);
-  VecDuplicate (dgdx, &tmpVec3);
-  VecCopy (xPassive3, tmpVec3);
-  VecShift (tmpVec3, -1);
-  VecScale (tmpVec3, -1);
-
-  // Get tmp xPhys, excluding all non design domain
-  Vec tmpxPhys;
-  VecDuplicate (xPhys, &tmpxPhys);
-  VecCopy (xPhys, tmpxPhys);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec0);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec1);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec2);
-  VecPointwiseMult (tmpxPhys, tmpxPhys, tmpVec3);
-
-  // Compute volume constraint gx[0]
-  PetscScalar nNonDesign0, nNonDesign1, nNonDesign2, nNonDesign3; // new newly added
-  VecSum (xPassive0, &nNonDesign0); // new newly added
-  VecSum (xPassive1, &nNonDesign1); // new newly added
-  VecSum (xPassive2, &nNonDesign2); // new newly added
-  VecSum (xPassive2, &nNonDesign3); // new newly added
-
-  PetscInt neltot;
-  VecGetSize (tmpxPhys, &neltot);
-  gx[0] = 0;
-  VecSum (tmpxPhys, &(gx[0]));
-  gx[0] = gx[0]
-      / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3)
-          - volfrac;
-  VecSet (dgdx,
-      1.0 / ((PetscScalar) neltot - nNonDesign0 - nNonDesign1 - nNonDesign2 - nNonDesign3));
-  VecPointwiseMult (dgdx, dgdx, tmpVec0);
-  VecPointwiseMult (dgdx, dgdx, tmpVec1);
-  VecPointwiseMult (dgdx, dgdx, tmpVec2);
-  VecPointwiseMult (dgdx, dgdx, tmpVec3);
-
-  VecRestoreArray (xPhys, &xp);
-  VecRestoreArray (xPassive0, &xPassive0p);
-  VecRestoreArray (xPassive1, &xPassive1p);
-  VecRestoreArray (xPassive2, &xPassive2p);
-  VecRestoreArray (xPassive3, &xPassive3p);
-  VecRestoreArray (Uloc, &up);
-  VecRestoreArray (dfdx, &df);
-  VecDestroy (&Uloc);
-
-  VecDestroy (&tmpVec0);
-  VecDestroy (&tmpVec1);
-  VecDestroy (&tmpVec2);
-  VecDestroy (&tmpVec3);
-  VecDestroy (&tmpxPhys);
 
   return (ierr);
 }
@@ -692,7 +714,8 @@ PetscErrorCode LinearHeatConduction::WriteRestartFiles () {
 //##################################################################
 
 PetscErrorCode LinearHeatConduction::AssembleConductivityMatrix (Vec xPhys,
-    PetscScalar Emin, PetscScalar Emax, PetscScalar penal) {
+    PetscScalar Emin, PetscScalar Emax, PetscScalar penal,
+    PetscInt loadCondition) {
 
   PetscErrorCode ierr;
 
@@ -714,11 +737,11 @@ PetscErrorCode LinearHeatConduction::AssembleConductivityMatrix (Vec xPhys,
   // Zero the matrix
   MatZeroEntries (K);
 
-  // Edof array, new
+  // Edof array
   PetscInt edof[nedof];
   PetscScalar ke[nedof * nedof];
 
-  // Loop over elements, new
+  // Loop over elements
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
     for (PetscInt j = 0; j < nen; j++) {
@@ -739,17 +762,17 @@ PetscErrorCode LinearHeatConduction::AssembleConductivityMatrix (Vec xPhys,
 
   // Impose the dirichlet conditions, i.e. K = N'*K*N - (N-I)
   // 1.: K = N'*K*N
-  MatDiagonalScale (K, N, N);
+  MatDiagonalScale (K, N[loadCondition], N[loadCondition]);
   // 2. Add ones, i.e. K = K + NI, NI = I - N
   Vec NI;
-  VecDuplicate (N, &NI);
+  VecDuplicate (N[loadCondition], &NI);
   VecSet (NI, 1.0);
-  VecAXPY (NI, -1.0, N);
+  VecAXPY (NI, -1.0, N[loadCondition]);
   MatDiagonalSet (K, NI, ADD_VALUES);
 
   // Zero out possible loads in the RHS that coincide
   // with Dirichlet conditions
-  VecPointwiseMult (RHS, RHS, N);
+  VecPointwiseMult (RHS[loadCondition], RHS[loadCondition], N[loadCondition]);
 
   VecDestroy (&NI);
   VecRestoreArray (xPhys, &xp);
@@ -832,8 +855,7 @@ PetscErrorCode LinearHeatConduction::SetUpSolver () {
 
   // SET THE DEFAULT SOLVER PARAMETERS
   // The fine grid solver settings
-  PetscScalar rtol = 1.0e-5; //new tmp
-  //  PetscScalar rtol         = 1.0e-5;
+  PetscScalar rtol = 1.0e-5;
   PetscScalar atol = 1.0e-50;
   PetscScalar dtol = 1.0e5;
   PetscInt restart = 100;
@@ -897,7 +919,7 @@ PetscErrorCode LinearHeatConduction::SetUpSolver () {
     // Set 0 to the finest level
     daclist[0] = da_nodal;
 
-    // Coordinates, new
+    // Coordinates
 #if DIM == 2
     PetscReal xmin = xc[0], xmax = xc[1], ymin = xc[2], ymax = xc[3];
 #elif DIM == 3
@@ -1168,7 +1190,8 @@ PetscInt LinearHeatConduction::Quad4Isoparametric (PetscScalar *X,
         for (PetscInt j = 0; j < 4; j++) {
           for (PetscInt k = 0; k < 2; k++) {
             for (PetscInt l = 0; l < 2; l++) {
-              ke[j + 4 * i] = ke[j + 4 * i] + weight * (B[k][i] * kcond[k][l] * B[l][j]);
+              ke[j + 4 * i] = ke[j + 4 * i]
+                              + weight * (B[k][i] * kcond[k][l] * B[l][j]);
             }
           }
         }
@@ -1394,7 +1417,7 @@ PetscInt LinearHeatConduction::Hex8Isoparametric (PetscScalar *X,
             for (PetscInt k = 0; k < 3; k++) {
               for (PetscInt l = 0; l < 3; l++) {
                 ke[j + 8 * i] = ke[j + 8 * i]
-                    + weight * (B[k][i] * kcond[k][l] * B[l][j]);
+                                + weight * (B[k][i] * kcond[k][l] * B[l][j]);
               }
             }
           }
@@ -1443,7 +1466,7 @@ PetscScalar LinearHeatConduction::Inverse3M (PetscScalar J[][3],
     PetscScalar invJ[][3]) {
 // inverse3M - Computes the inverse of a 3x3 matrix
   PetscScalar detJ = J[0][0] * (J[1][1] * J[2][2] - J[2][1] * J[1][2])
-      - J[0][1] * (J[1][0] * J[2][2] - J[2][0] * J[1][2])
+                     - J[0][1] * (J[1][0] * J[2][2] - J[2][0] * J[1][2])
                      + J[0][2] * (J[1][0] * J[2][1] - J[2][0] * J[1][1]);
   invJ[0][0] = (J[1][1] * J[2][2] - J[2][1] * J[1][2]) / detJ;
   invJ[0][1] = -(J[0][1] * J[2][2] - J[0][2] * J[2][1]) / detJ;

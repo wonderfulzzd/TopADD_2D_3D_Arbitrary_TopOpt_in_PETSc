@@ -36,7 +36,11 @@ PrePostProcess::PrePostProcess (TopOpt *opt) {
   dy = opt->dy;
   dz = opt->dz;
 #endif
+//  this->numLoads = 1; //opt->numLoads;
+  this->numLoads = opt->numLoads;
   voxIndex = 0;
+  occFIX.resize (numLoads);
+  occLOD.resize (numLoads);
 }
 
 PrePostProcess::~PrePostProcess () {
@@ -111,7 +115,7 @@ PetscErrorCode PrePostProcess::UpdateNodeDensity (TopOpt *opt) {
   for (PetscInt i = 0; i < nel; i++) {
     // loop over element nodes
     if (xPassive0p[i] == 0 /*&& xPassive1p[i] == 0 && xPassive2p[i] == 0
-        && xPassive3p[i] == 0*/) {
+     && xPassive3p[i] == 0*/) {
       memset (eNodeDensity, 0.0, sizeof(eNodeDensity[0]) * nen);
       for (PetscInt j = 0; j < nen; j++) {
         eNodeDensity[j] = xp[i];
@@ -160,10 +164,21 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
   t1 = MPI_Wtime ();
   if (!opt->inputSTL_DES[0].empty ())
     ierr = sv->Read_file (opt->inputSTL_DES[0]);
-  if (!opt->inputSTL_FIX[0].empty ())
-    ierr = sv->Read_file (opt->inputSTL_FIX[0]);
-  if (!opt->inputSTL_LOD[0].empty ())
-    ierr = sv->Read_file (opt->inputSTL_LOD[0]);
+  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+      ++loadCondition) {
+    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+      if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
+        ierr = sv->Read_file (opt->inputSTL_FIX[loadCondition - backSearch]);
+        break;
+      }
+    }
+    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+      if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
+        ierr = sv->Read_file (opt->inputSTL_LOD[loadCondition - backSearch]);
+        break;
+      }
+    }
+  }
   if (!opt->inputSTL_SLD[0].empty ())
     ierr = sv->Read_file (opt->inputSTL_SLD[0]);
   t2 = MPI_Wtime ();
@@ -172,14 +187,16 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
   t1 = MPI_Wtime ();
   sv->ScaleAndTranslate (nx, ny, nz, dx, dy, dz);
   t2 = MPI_Wtime ();
-  PetscPrintf (PETSC_COMM_WORLD, "# Scale and translate took: %f s\n", t2 - t1);
+  PetscPrintf (PETSC_COMM_WORLD, "# Scale and translate took: %f s\n",
+      t2 - t1);
 
   // Part domain voxelization
   if (!opt->inputSTL_DES[0].empty ()) {
     t1 = MPI_Wtime ();
     sv->Voxelize_surface (occDES, nx, ny, nz, dx, dy, dz);
     t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of DES surface took: %f s\n",
+    PetscPrintf (PETSC_COMM_WORLD,
+        "# Voxelization of DES surface took: %f s\n",
         t2 - t1);
     t1 = MPI_Wtime ();
     sv->Voxelize_solid (occDES, nx, ny, nz);
@@ -190,36 +207,48 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
         opt->inputSTL_DES[0].c_str ());
   }
 
-  // Fixture domain voxelization
-  if (!opt->inputSTL_FIX[0].empty ()) {
-    t1 = MPI_Wtime ();
-    sv->Voxelize_surface (occFIX, nx, ny, nz, dx, dy, dz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of FIX surface took: %f s\n",
-        t2 - t1);
-    t1 = MPI_Wtime ();
-    sv->Voxelize_solid (occFIX, nx, ny, nz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of FIX solid took: %f s\n",
-        t2 - t1);
-    PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
-        opt->inputSTL_FIX[0].c_str ());
-  }
-
-  // Load domain voxelization
-  if (!opt->inputSTL_LOD[0].empty ()) {
-    t1 = MPI_Wtime ();
-    sv->Voxelize_surface (occLOD, nx, ny, nz, dx, dy, dz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of LOD surface took: %f s\n",
-        t2 - t1);
-    t1 = MPI_Wtime ();
-    sv->Voxelize_solid (occLOD, nx, ny, nz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of LOD solid took: %f s\n",
-        t2 - t1);
-    PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
-        opt->inputSTL_LOD[0].c_str ());
+  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+      ++loadCondition) {
+    // Fixture domain voxelization
+    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+      if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
+        t1 = MPI_Wtime ();
+        sv->Voxelize_surface (occFIX[loadCondition], nx, ny, nz, dx, dy, dz);
+        t2 = MPI_Wtime ();
+        PetscPrintf (PETSC_COMM_WORLD,
+            "# Voxelization of FIX%d surface took: %f s\n", loadCondition,
+            t2 - t1);
+        t1 = MPI_Wtime ();
+        sv->Voxelize_solid (occFIX[loadCondition], nx, ny, nz);
+        t2 = MPI_Wtime ();
+        PetscPrintf (PETSC_COMM_WORLD,
+            "# Voxelization of FIX%d solid took: %f s\n", loadCondition,
+            t2 - t1);
+        PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
+            opt->inputSTL_FIX[loadCondition - backSearch].c_str ());
+        break;
+      }
+    }
+    // Load domain voxelization
+    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+      if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
+        t1 = MPI_Wtime ();
+        sv->Voxelize_surface (occLOD[loadCondition], nx, ny, nz, dx, dy, dz);
+        t2 = MPI_Wtime ();
+        PetscPrintf (PETSC_COMM_WORLD,
+            "# Voxelization of LOD%d surface took: %f s\n", loadCondition,
+            t2 - t1);
+        t1 = MPI_Wtime ();
+        sv->Voxelize_solid (occLOD[loadCondition], nx, ny, nz);
+        t2 = MPI_Wtime ();
+        PetscPrintf (PETSC_COMM_WORLD,
+            "# Voxelization of LOD%d solid took: %f s\n", loadCondition,
+            t2 - t1);
+        PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
+            opt->inputSTL_LOD[loadCondition - backSearch].c_str ());
+        break;
+      }
+    }
   }
 
   // Non-designable solid domain voxelization
@@ -227,7 +256,8 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
     t1 = MPI_Wtime ();
     sv->Voxelize_surface (occSLD, nx, ny, nz, dx, dy, dz);
     t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of SLD surface took: %f s\n",
+    PetscPrintf (PETSC_COMM_WORLD,
+        "# Voxelization of SLD surface took: %f s\n",
         t2 - t1);
     t1 = MPI_Wtime ();
     sv->Voxelize_solid (occSLD, nx, ny, nz);
@@ -246,7 +276,9 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
 }
 
 // Passive element assignment
-PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
+PetscErrorCode
+PrePostProcess::AssignPassiveElement (TopOpt *opt)
+    {
   PetscErrorCode ierr = 0;
 
   // Global coordinates of nodes and its pointer
@@ -338,25 +370,33 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
         }
       }
 
-      if (!opt->inputSTL_FIX[0].empty ()) {
-        occTmp = occFIX[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1) {
-          xp_2D[j][i] = 1.0;
-          xPassive0p_2D[j][i] = 0;
-          xPassive1p_2D[j][i] = 1;
-          xPassive2p_2D[j][i] = 0;
-          xPassive3p_2D[j][i] = 0;
+      for (unsigned int loadCondition = 0; loadCondition < numLoads;
+          ++loadCondition) {
+        for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+          if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
+            occTmp = occFIX[loadCondition][voxIndex / BATCH];
+            if ((occTmp >> (voxIndex % BATCH)) & 1) {
+              xp_2D[j][i] = 1.0;
+              xPassive0p_2D[j][i] = 0;
+              xPassive1p_2D[j][i] += 1.0 * std::pow (2, 1.0 * loadCondition);
+              xPassive2p_2D[j][i] = 0;
+              xPassive3p_2D[j][i] = 0;
+            }
+            break;
+          }
         }
-      }
-
-      if (!opt->inputSTL_LOD[0].empty ()) {
-        occTmp = occLOD[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1) {
-          xp_2D[j][i] = 1.0;
-          xPassive0p_2D[j][i] = 0;
-          xPassive1p_2D[j][i] = 0;
-          xPassive2p_2D[j][i] = 1;
-          xPassive3p_2D[j][i] = 0;
+        for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+          if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
+            occTmp = occLOD[loadCondition][voxIndex / BATCH];
+            if ((occTmp >> (voxIndex % BATCH)) & 1) {
+              xp_2D[j][i] = 1.0;
+              xPassive0p_2D[j][i] = 0;
+              xPassive1p_2D[j][i] = 0;
+              xPassive2p_2D[j][i] += 1.0 * std::pow (2, 1.0 * loadCondition);
+              xPassive3p_2D[j][i] = 0;
+            }
+            break;
+          }
         }
       }
 
@@ -401,7 +441,8 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
 
 #elif DIM ==3
   // Get pointer to the densities and xpassive index vec
-  PetscScalar ***xp_3D, ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D, ***xPassive3p_3D;
+  PetscScalar ***xp_3D, ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D,
+      ***xPassive3p_3D;
 
   // Local vector of the global x and xPassive vectors
   Vec xloc, xPassive0loc, xPassive1loc, xPassive2loc, xPassive3loc;
@@ -474,25 +515,37 @@ PetscErrorCode PrePostProcess::AssignPassiveElement (TopOpt *opt) {
           }
         }
 
-        if (!opt->inputSTL_FIX[0].empty ()) {
-          occTmp = occFIX[voxIndex / BATCH];
-          if ((occTmp >> (voxIndex % BATCH)) & 1) {
-            xp_3D[k][j][i] = 1.0;
-            xPassive0p_3D[k][j][i] = 0;
-            xPassive1p_3D[k][j][i] = 1;
-            xPassive2p_3D[k][j][i] = 0;
-            xPassive3p_3D[k][j][i] = 0;
+        for (unsigned int loadCondition = 0; loadCondition < numLoads;
+            ++loadCondition) {
+          for (unsigned int backSearch = 0; backSearch <= loadCondition;
+              ++backSearch) {
+            if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
+              occTmp = occFIX[loadCondition][voxIndex / BATCH];
+              if ((occTmp >> (voxIndex % BATCH)) & 1) {
+                xp_3D[k][j][i] = 1.0;
+                xPassive0p_3D[k][j][i] = 0;
+                xPassive1p_3D[k][j][i] += 1.0
+                                          * std::pow (2, 1.0 * loadCondition);
+                xPassive2p_3D[k][j][i] = 0;
+                xPassive3p_3D[k][j][i] = 0;
+              }
+              break;
+            }
           }
-        }
-
-        if (!opt->inputSTL_LOD[0].empty ()) {
-          occTmp = occLOD[voxIndex / BATCH];
-          if ((occTmp >> (voxIndex % BATCH)) & 1) {
-            xp_3D[k][j][i] = 1.0;
-            xPassive0p_3D[k][j][i] = 0;
-            xPassive1p_3D[k][j][i] = 0;
-            xPassive2p_3D[k][j][i] = 1;
-            xPassive3p_3D[k][j][i] = 0;
+          for (unsigned int backSearch = 0; backSearch <= loadCondition;
+              ++backSearch) {
+            if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
+              occTmp = occLOD[loadCondition][voxIndex / BATCH];
+              if ((occTmp >> (voxIndex % BATCH)) & 1) {
+                xp_3D[k][j][i] = 1.0;
+                xPassive0p_3D[k][j][i] = 0;
+                xPassive1p_3D[k][j][i] = 0;
+                xPassive2p_3D[k][j][i] += 1.0
+                                          * std::pow (2, 1.0 * loadCondition);
+                xPassive3p_3D[k][j][i] = 0;
+              }
+              break;
+            }
           }
         }
 
@@ -565,11 +618,19 @@ PrePostProcess::CleanUp ()
   PetscErrorCode ierr = 0;
 
   std::vector<int> ().swap (occDES);
-  std::vector<int> ().swap (occFIX);
-  std::vector<int> ().swap (occLOD);
+  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+      ++loadCondition) {
+    std::vector<int> ().swap (occFIX[loadCondition]);
+    std::vector<int> ().swap (occLOD[loadCondition]);
+  }
   std::vector<int> ().swap (occSLD);
 
-  ierr = occDES.size () + occFIX.size () + occLOD.size () + occSLD.size ();
+  ierr = occDES.size ();
+  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+      ++loadCondition) {
+    ierr += occFIX[loadCondition].size () + occLOD[loadCondition].size ();
+  }
+  ierr += occSLD.size ();
 
   return ierr;
 }

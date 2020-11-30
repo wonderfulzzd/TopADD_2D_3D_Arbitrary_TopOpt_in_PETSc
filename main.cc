@@ -57,20 +57,22 @@ int main (int argc, char *argv[]) {
   // STEP 3: THE PHYSICS
   // 0 - linear elasticity, 1 - linear heat conduction, 2 - compliant
 #if PHYSICS == 0
-  LinearElasticity *physics = new LinearElasticity (opt->da_nodes,
-      opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);
+  LinearElasticity *physics = new LinearElasticity (opt->da_nodes, opt->m,
+      opt->numLoads, opt->gacc, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);
 #elif PHYSICS ==1
-  LinearCompliant *physics = new LinearCompliant (opt->da_nodes, opt->numLoads,
-      opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);   // # new
+  LinearCompliant *physics = new LinearCompliant (opt->da_nodes, opt->m,
+      opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2,
+      opt->xPassive3); // # new
 #elif PHYSICS == 2
   LinearHeatConduction *physics = new LinearHeatConduction (opt->da_nodes,
-      opt->da_elem, opt->numLoads, opt->xPassive0, opt->xPassive1,
+      opt->da_elem, opt->m, opt->numLoads, opt->xPassive0, opt->xPassive1,
       opt->xPassive2, opt->xPassive3);    // # new
 #endif
 
   // STEP 4: THE FILTERING
   Filter *filter = new Filter (opt->da_nodes, opt->xPhys, opt->filter,
-      opt->rmin, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);    // # modified
+      opt->rmin, opt->xPassive0, opt->xPassive1, opt->xPassive2,
+      opt->xPassive3); // # modified
 
   // STEP 5: VISUALIZATION USING VTK
   MPIIO *output = new MPIIO (opt->da_nodes, 4, "ux, uy, uz, nodeDen", 7,
@@ -99,9 +101,9 @@ int main (int argc, char *argv[]) {
 
     // Compute (a) obj+const, (b) sens, (c) obj+const+sens
     ierr = physics->ComputeObjectiveConstraintsSensitivities (&(opt->fx),
-        &(opt->gx[0]), opt->dfdx, opt->dgdx[0], opt->xPhys, opt->Emin,
+        &(opt->gx[0]), opt->dfdx, opt->dgdx, opt->xPhys, opt->Emin,
         opt->Emax, opt->penal, opt->volfrac, opt->xPassive0, opt->xPassive1,
-        opt->xPassive2, opt->xPassive3);    // # new
+        opt->xPassive2, opt->xPassive3); // # new
     CHKERRQ(ierr);
 
     // Compute objective scale

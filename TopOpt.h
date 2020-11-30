@@ -129,7 +129,8 @@ class TopOpt {
     PetscScalar E; // # new; Young's modulus
     // Optimization parameters
     PetscInt nnd; // # new; Total number of non design variables
-    PetscInt numLoads; // # new; number of load cases
+    PetscInt numLoads; // # new; number of loading conditions
+    PetscScalar *gacc; // # new; body loading conditions (e.g. gravity accleration)
     std::string *inputSTL_DES; // # new; name of part file
     std::string *inputSTL_FIX; // # new; name of fixture file
     std::string *inputSTL_LOD; // # new; name of loading domain file
@@ -140,7 +141,6 @@ class TopOpt {
     Vec xPassive3; // # new; the passive solid element index
     Vec nodeDensity; // # new; node density
     Vec nodeAddingCounts; // # new; node adding counts when summing node density from element density
-    PetscScalar *gacc; // gravity accleration
 };
 
 #endif

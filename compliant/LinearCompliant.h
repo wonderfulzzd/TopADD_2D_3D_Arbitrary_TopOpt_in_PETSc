@@ -28,7 +28,7 @@ class LinearCompliant {
 
   public:
     // Constructor
-    LinearCompliant (DM da_nodes, PetscInt numLoads, Vec xPassive0,
+    LinearCompliant (DM da_nodes, PetscInt m, PetscInt numLoads, Vec xPassive0,
         Vec xPassive1, Vec xPassive2, Vec xPassive3); //new
 
     // Destructor
@@ -37,7 +37,7 @@ class LinearCompliant {
     // Compute objective and constraints and sensitivities at once: GOOD FOR
     // SELF_ADJOINT PROBLEMS
     PetscErrorCode ComputeObjectiveConstraintsSensitivities (PetscScalar *fx,
-        PetscScalar *gx, Vec dfdx, Vec dgdx, Vec xPhys, PetscScalar Emin,
+        PetscScalar *gx, Vec dfdx, Vec *dgdx, Vec xPhys, PetscScalar Emin,
         PetscScalar Emax, PetscScalar penal, PetscScalar volfrac, Vec xPassive0,
         Vec xPassive1, Vec xPassive2, Vec xPassive3);
 
@@ -66,8 +66,8 @@ class LinearCompliant {
     // Linear algebra
     Mat K; // Global stiffness matrix
     Vec *U; // Displacement vector
-    Vec RHS; // Load vector
-    Vec N; // Dirichlet vector (used when imposing BCs)
+    Vec *RHS; // Load vector
+    Vec *N; // Dirichlet vector (used when imposing BCs)
 #if DIM == 2
     static const PetscInt nedof = 8; // new Number of elemental dofs
 #elif DIM == 3
@@ -80,21 +80,23 @@ class LinearCompliant {
     PetscInt nlvls;
     PetscScalar nu; // Possions ratio
 
+    // Number of loading conditions
+    PetscInt numLoads;
+
     // Element size
     PetscScalar dx, dy, dz;
 
-    // Number of load domains
-    PetscInt nl;
+    // Number of constraints
+    PetscInt m;
+
+
 
     // External spring information
     Vec Sv; // spring vector
 
-    // Extract DMDA from input one and set up a new one for linear compliant
-    PetscErrorCode SetUpNodalMesh (DM da_nodes); //new
-
-    // Update the load and boundary conditions
-    PetscErrorCode SetUpLoadAndBC (Vec xPassive0, Vec xPassive1,
-        Vec xPassive2, Vec xPassive3, PetscInt loadStep); //new
+    // Set up the FE mesh, data structures, and load and boundary conditions
+    PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
+        Vec xPassive2, Vec xPassive3);
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
@@ -102,7 +104,7 @@ class LinearCompliant {
 
     // Assemble the stiffness matrix
     PetscErrorCode AssembleStiffnessMatrix (Vec xPhys, PetscScalar Emin,
-        PetscScalar Emax, PetscScalar penal);
+        PetscScalar Emax, PetscScalar penal, PetscInt loadCondition);
 
     // Start the solver
     PetscErrorCode SetUpSolver ();
@@ -132,7 +134,7 @@ class LinearCompliant {
         PetscScalar zeta, PetscScalar *dNdxi, PetscScalar *dNdeta,
         PetscScalar *dNdzeta);
     PetscScalar Inverse3M (PetscScalar J[][3], PetscScalar invJ[][3]);
-#endif
+    #endif
 
     PetscScalar Dot (PetscScalar *v1, PetscScalar *v2, PetscInt l);
 
