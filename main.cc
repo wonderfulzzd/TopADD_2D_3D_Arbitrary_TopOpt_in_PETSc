@@ -58,7 +58,9 @@ int main (int argc, char *argv[]) {
   // 0 - linear elasticity, 1 - linear heat conduction, 2 - compliant
 #if PHYSICS == 0
   LinearElasticity *physics = new LinearElasticity (opt->da_nodes, opt->m,
-      opt->numLoads, opt->gacc, opt->xPassive0, opt->xPassive1, opt->xPassive2, opt->xPassive3);
+      opt->numLoads, opt->numNodeLoadAddingCounts, opt->nu, opt->E,
+      opt->loadVector, opt->xPassive0, opt->xPassive1, opt->xPassive2,
+      opt->xPassive3);
 #elif PHYSICS ==1
   LinearCompliant *physics = new LinearCompliant (opt->da_nodes, opt->m,
       opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2,

@@ -130,7 +130,8 @@ class TopOpt {
     // Optimization parameters
     PetscInt nnd; // # new; Total number of non design variables
     PetscInt numLoads; // # new; number of loading conditions
-    PetscScalar *gacc; // # new; body loading conditions (e.g. gravity accleration)
+    PetscInt numNodeLoadAddingCounts; // # new; number of node adding loads during the system assembly
+    PetscScalar *loadVector; // # new; load vector
     std::string *inputSTL_DES; // # new; name of part file
     std::string *inputSTL_FIX; // # new; name of fixture file
     std::string *inputSTL_LOD; // # new; name of loading domain file

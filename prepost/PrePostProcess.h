@@ -76,6 +76,14 @@ class PrePostProcess {
     PetscErrorCode DesignDomainInitialization (TopOpt *opt);
 
     /**
+     * Caculate the number of nodal-wisely adding loads in the LOD domains during the loading vector assembly
+     * \param[in] pointer of the TopOpt class
+     * \param[out]
+     * \return PetscErrorCode
+     */
+    PetscErrorCode CalculateNodeLoadAddingTotalCounts (TopOpt *opt);
+
+    /**
      * Update the node density
      * \param[in] pointer of the TopOpt class
      * \param[out]

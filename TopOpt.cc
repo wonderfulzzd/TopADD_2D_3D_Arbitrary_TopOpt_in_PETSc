@@ -52,7 +52,7 @@ void TopOpt::Init () { // Dummy constructor
   xPassive3 = NULL; // # new
   nodeDensity = NULL; // # new
   nodeAddingCounts = NULL; // # new
-  gacc = NULL; // # new
+  loadVector = NULL; // # new
 
   SetUp ();
 }
@@ -97,7 +97,7 @@ TopOpt::~TopOpt () {
   if (inputSTL_FIX != NULL) delete[] inputSTL_FIX; // # new
   if (inputSTL_LOD != NULL) delete[] inputSTL_LOD; // # new
   // Delete the gravity load vector
-  if (gacc != NULL) delete[] gacc; // # new
+  if (loadVector != NULL) delete[] loadVector; // # new
 }
 
 // NO METHODS !
@@ -118,9 +118,9 @@ PetscErrorCode TopOpt::SetUp () {
   xc[2] = 0.0;
   xc[3] = 1.0;
   numLoads = 1; // number of loading conditions
-  gacc = new PetscScalar[numLoads * DIM]; // body load (e.g. gravity accleration)
-  gacc[0 * DIM + 0] = 0.0; // x
-  gacc[0 * DIM + 1] = -1.0; // y
+  loadVector = new PetscScalar[numLoads * DIM]; // body load (e.g. gravity accleration)
+  loadVector[0 * DIM + 0] = 0.0; // x
+  loadVector[0 * DIM + 1] = -10000; // y
   inputSTL_DES = new std::string[1];
   inputSTL_FIX = new std::string[numLoads];
   inputSTL_LOD = new std::string[numLoads];
@@ -133,6 +133,8 @@ PetscErrorCode TopOpt::SetUp () {
   rmin = 6.0 * PetscMax(xc[1] / (nxyz[0] - 1),
              PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
   Emin = 1.0e-9;
+  E = 1.0;
+
 #elif PHYSICS == 1  // # new
   // Compliant
   nxyz[0] = 241;
@@ -210,10 +212,10 @@ PetscErrorCode TopOpt::SetUp () {
   xc[4] = 0.0;
   xc[5] = 1.0;
   numLoads = 1; // # new; number of loading conditions
-  gacc = new PetscScalar[numLoads * DIM]; // # new; body load (e.g. gravity accleration)
-  gacc[0 * DIM + 0] = 0.0; // # new; x
-  gacc[0 * DIM + 1] = -1.0; // # new;  y
-  gacc[0 * DIM + 2] = 0.0; // # new; z
+  loadVector = new PetscScalar[numLoads * DIM]; // # new; body load (e.g. gravity accleration)
+  loadVector[0 * DIM + 0] = 0.0; // # new; x
+  loadVector[0 * DIM + 1] = -1.0; // # new;  y
+  loadVector[0 * DIM + 2] = 0.0; // # new; z
   inputSTL_DES = new std::string[1]; // # new
   inputSTL_FIX = new std::string[numLoads]; // # new
   inputSTL_LOD = new std::string[numLoads]; // # new

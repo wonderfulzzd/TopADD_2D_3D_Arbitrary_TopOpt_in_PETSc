@@ -71,8 +71,74 @@ PetscErrorCode PrePostProcess::DesignDomainInitialization (TopOpt *opt) {
   // Clean the occupancy data and free memory
   CleanUp ();
 
+  // Calculate the node load adding total counts
+  // This is for dividing the total force among all the loading nodes
+  CalculateNodeLoadAddingTotalCounts (opt);
+
   PetscPrintf (PETSC_COMM_WORLD,
       "##############################################################\n");
+
+  return ierr;
+}
+
+PetscErrorCode PrePostProcess::CalculateNodeLoadAddingTotalCounts (TopOpt *opt) {
+  PetscErrorCode ierr = 0;
+
+  // Get the FE mesh structure (from the nodal mesh)
+  PetscInt nel, nen;
+  const PetscInt *necon;
+#if DIM == 2
+  ierr = DMDAGetElements_2D (opt->da_nodes, &nel, &nen, &necon);
+  CHKERRQ(ierr);
+  PetscScalar eNodeAddingCounts[4] = { 1, 1, 1, 1 }; // elemental node adding counts
+#elif DIM == 3
+  ierr = DMDAGetElements_3D (opt->da_nodes, &nel, &nen, &necon);
+  CHKERRQ(ierr);
+  PetscScalar eNodeAddingCounts[8] = { 1, 1, 1, 1, 1, 1, 1, 1 }; // elemental node adding counts
+#endif
+
+  VecZeroEntries (opt->nodeAddingCounts); // zero off nodeAddingCounts vector
+  // DMDAGetElements(da_nodes,&nel,&nen,&necon); // Still issue with elemtype
+  // change !
+
+  // Get pointer to the densities
+  PetscScalar *xp, *xPassive0p, *xPassive1p, *xPassive2p, *xPassive3p;
+  VecGetArray (opt->xPhys, &xp);
+  VecGetArray (opt->xPassive0, &xPassive0p);
+  VecGetArray (opt->xPassive1, &xPassive1p);
+  VecGetArray (opt->xPassive2, &xPassive2p);
+  VecGetArray (opt->xPassive3, &xPassive3p);
+
+  // Edof array, new
+  PetscInt edof[nen];
+
+  // Loop over elements
+  for (PetscInt i = 0; i < nel; i++) {
+    // loop over element nodes
+    if (xPassive2p[i] != 0) {
+//      memset (eNodeDensity, 0.0, sizeof(eNodeDensity[0]) * nen);
+      for (PetscInt j = 0; j < nen; j++) {
+        // global numbering of each node
+        if (PHYSICS == 0 || PHYSICS == 1) {
+          edof[j] = DIM * necon[i * nen + j];
+        } else if (PHYSICS == 2) {
+          edof[j] = 1 * necon[i * nen + j]; // for heat conduction, only has 1 dof per node
+        }
+      }
+      ierr = VecSetValuesLocal (opt->nodeAddingCounts, nen, edof,
+          eNodeAddingCounts, ADD_VALUES);
+      CHKERRQ(ierr);
+    }
+  }
+
+  VecAssemblyBegin (opt->nodeAddingCounts);
+  VecAssemblyEnd (opt->nodeAddingCounts);
+  PetscScalar tmp;  // need to use this tmp variable because VecSum does not accept PetscInt
+  VecSum(opt->nodeAddingCounts, &tmp);
+  opt->numNodeLoadAddingCounts = static_cast<PetscInt> (tmp);
+  VecAssemblyBegin (opt->nodeAddingCounts);
+  VecAssemblyEnd (opt->nodeAddingCounts);
+  DMDARestoreElements (opt->da_nodes, &nel, &nen, &necon);
 
   return ierr;
 }
@@ -135,9 +201,9 @@ PetscErrorCode PrePostProcess::UpdateNodeDensity (TopOpt *opt) {
     }
   }
 
-  //  Calculate the average node stress11 by using pointwise dividing
-  VecAssemblyBegin (opt->nodeAddingCounts); // the stress-wrong-at-the-domain-separating-lines
-  VecAssemblyEnd (opt->nodeAddingCounts); // problem
+  //  Calculate the average node density by using pointwise dividing
+  VecAssemblyBegin (opt->nodeAddingCounts);
+  VecAssemblyEnd (opt->nodeAddingCounts);
   VecAssemblyBegin (opt->nodeDensity);
   VecAssemblyEnd (opt->nodeDensity);
   VecPointwiseDivide (opt->nodeDensity, opt->nodeDensity,

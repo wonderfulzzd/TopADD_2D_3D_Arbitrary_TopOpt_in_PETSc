@@ -14,7 +14,8 @@
  */
 
 LinearElasticity::LinearElasticity (DM da_nodes, PetscInt m, PetscInt numLoads,
-    PetscScalar *gacc, Vec xPassive0, Vec xPassive1, Vec xPassive2,
+    PetscInt numNodeLoadAddingCounts, PetscScalar nu, PetscScalar E,
+    PetscScalar *loadVector, Vec xPassive0, Vec xPassive1, Vec xPassive2,
     Vec xPassive3) { // # modified
   // Set pointers to null
   K = NULL;
@@ -25,19 +26,25 @@ LinearElasticity::LinearElasticity (DM da_nodes, PetscInt m, PetscInt numLoads,
   da_nodal = NULL;
 
   // Parameters - to be changed on read of variables
-  nu = 0.3;
+  this->nu = nu; // # modified
+  this->E = E; // # new
   nlvls = 4;
   PetscBool flg;
   PetscOptionsGetInt (NULL, NULL, "-nlvls", &nlvls, &flg);
   PetscOptionsGetReal (NULL, NULL, "-nu", &nu, &flg);
 
   this->m = m; // # new
-  this->gacc = NULL; // # new
+  this->loadVector = NULL; // # new
   this->numLoads = numLoads; // # new; num of loads, save for internal uses
-  this->gacc = new PetscScalar[numLoads * DIM]; // # new; total body load (e.g. gravity accleration)
+  this->numNodeLoadAddingCounts = numNodeLoadAddingCounts; // # new; num of node load adding counts
+  this->loadVector = new PetscScalar[numLoads * DIM]; // # new; total body load (e.g. gravity accleration)
 
   for (PetscInt i = 0; i < this->numLoads * DIM; ++i) { // # new
-    this->gacc[i] = gacc[i]; // # new
+    if (this->numNodeLoadAddingCounts != 0) { // # new
+      this->loadVector[i] = loadVector[i] / this->numNodeLoadAddingCounts; // # new
+    } else { // # new
+      this->loadVector[i] = loadVector[i]; // # new
+    } // # new
   } // # new
 
   RHS = new Vec[numLoads]; // # new
@@ -59,7 +66,7 @@ LinearElasticity::~LinearElasticity () {
   if (da_nodal != NULL) {
     DMDestroy (&(da_nodal));
   }
-  if (gacc != NULL) delete gacc; // # new
+  if (loadVector != NULL) delete loadVector; // # new
 }
 
 PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
@@ -221,7 +228,7 @@ PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
 
         if (std::fmod ((xPassive2p[i] / std::pow (2.0, loadCondition)), 2) >= 1.0) {
           for (PetscInt j = 0; j < 8; j++) {
-            rhs_ele[j] = gacc[DIM * loadCondition + j % DIM];
+            rhs_ele[j] = loadVector[DIM * loadCondition + j % DIM];
           }
           ierr = VecSetValuesLocal (RHS[loadCondition], 8, edof, rhs_ele,
               ADD_VALUES);
@@ -432,7 +439,7 @@ PetscErrorCode LinearElasticity::SetUpLoadAndBC (DM da_nodes, Vec xPassive0,
 
         if (std::fmod ((xPassive2p[i] / std::pow (2.0, loadCondition)), 2) >= 1.0) {
           for (PetscInt j = 0; j < 24; j++) {
-            rhs_ele[j] = gacc[DIM * loadCondition + j % DIM];
+            rhs_ele[j] = loadVector[DIM * loadCondition + j % DIM];
           }
           ierr = VecSetValuesLocal (RHS[loadCondition], 24, edof, rhs_ele,
               ADD_VALUES);
@@ -790,7 +797,7 @@ LinearElasticity::ComputeSensitivities (Vec dfdx, Vec *dgdx,
   PetscInt nel, nen;
   const PetscInt *necon;
 #if DIM == 2  // # new
-    ierr = DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
+  ierr = DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
 #elif DIM == 3
   ierr = DMDAGetElements_3D (da_nodal, &nel, &nen, &necon);
 #endif
@@ -949,8 +956,8 @@ LinearElasticity::AssembleStiffnessMatrix (Vec xPhys,
   PetscInt nel, nen;
   const PetscInt *necon;
 #if DIM == 2    // # new
-    ierr = DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
-    CHKERRQ(ierr);
+  ierr = DMDAGetElements_2D (da_nodal, &nel, &nen, &necon);
+  CHKERRQ(ierr);
 #elif DIM == 3
   ierr = DMDAGetElements_3D (da_nodal, &nel, &nen, &necon);
   CHKERRQ(ierr);
@@ -1391,7 +1398,7 @@ PetscInt LinearElasticity::Quad4Isoparametric (PetscScalar *X, PetscScalar *Y,
 
   //// COMPUTE ELEMENT STIFFNESS MATRIX
   // Lame's parameters (with E=1.0):
-  PetscScalar E = 1.0;
+  PetscScalar E = this->E; // # modified
   // Constitutive matrix, plane stress
   PetscScalar C[3][3] = { { E / (1.0 - nu * nu), E * nu / (1.0 - nu * nu), 0 },
                           { E * nu / (1.0 - nu * nu), E / (1.0 - nu * nu), 0 },
@@ -1629,8 +1636,9 @@ LinearElasticity::Hex8Isoparametric (PetscScalar *X, PetscScalar *Y,
 
 //// COMPUTE ELEMENT STIFFNESS MATRIX
 // Lame's parameters (with E=1.0):
-  PetscScalar lambda = nu / ((1.0 + nu) * (1.0 - 2.0 * nu));
-  PetscScalar mu = 1.0 / (2.0 * (1.0 + nu));
+  PetscScalar E = this->E;  // # new
+  PetscScalar lambda = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu)); // # modified
+  PetscScalar mu = E / (2.0 * (1.0 + nu));  // # modified
 // Constitutive matrix
   PetscScalar C[6][6] = { { lambda + 2.0 * mu, lambda, lambda, 0.0, 0.0, 0.0 }, { lambda, lambda
       + 2.0 * mu, lambda, 0.0, 0.0, 0.0 }, { lambda, lambda, lambda + 2.0 * mu, 0.0, 0.0, 0.0 }, { 0.0, 0.0, 0.0, mu, 0.0, 0.0 }, { 0.0, 0.0, 0.0, 0.0, mu, 0.0 }, { 0.0, 0.0, 0.0, 0.0, 0.0, mu } };

@@ -28,8 +28,10 @@ class LinearElasticity {
 
   public:
     // Constructor
-    LinearElasticity (DM da_nodes, PetscInt m, PetscInt numLoads, PetscScalar *gacc,
-        Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3); // # modified
+    LinearElasticity (DM da_nodes, PetscInt m, PetscInt numLoads,
+        PetscInt numNodeLoadAddingCounts, PetscScalar nu, PetscScalar E,
+        PetscScalar *loadVector, Vec xPassive0, Vec xPassive1, Vec xPassive2,
+        Vec xPassive3); // # modified
 
     // Destructor
     ~LinearElasticity ();
@@ -91,10 +93,12 @@ class LinearElasticity {
     KSP ksp; // Pointer to the KSP object i.e. the linear solver+prec
     PetscInt nlvls;
     PetscScalar nu; // Possions ratio
+    PetscScalar E; // Young's modulus
 
     // Loading conditions
     PetscInt numLoads; // # new; number of loading conditions
-    PetscScalar *gacc; // # new; body loading conditions (e.g. gravity accleration)
+    PetscScalar *loadVector; // # new; load vector
+    PetscInt numNodeLoadAddingCounts; // # new; number of node adding loads during the system assembly
 
     // Element dimensions
     PetscScalar dx, dy, dz; // # new
@@ -112,7 +116,7 @@ class LinearElasticity {
 
     // Assemble the stiffness matrix
     PetscErrorCode AssembleStiffnessMatrix (Vec xPhys, PetscScalar Emin,
-        PetscScalar Emax, PetscScalar penal, PetscInt loadCondition);  // # modified
+        PetscScalar Emax, PetscScalar penal, PetscInt loadCondition); // # modified
 
     // Start the solver
     PetscErrorCode SetUpSolver ();
