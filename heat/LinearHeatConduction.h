@@ -28,9 +28,9 @@ class LinearHeatConduction {
 
   public:
     // Constructor
-    LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt m,
-        PetscInt numLoads,
-        Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3);
+    LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt m, PetscInt numDES,
+        PetscInt numLODFIX, Vec xPassive0, Vec xPassive1, Vec xPassive2,
+        Vec xPassive3);
 
     // Destructor
     ~LinearHeatConduction ();
@@ -58,6 +58,11 @@ class LinearHeatConduction {
     // Logical mesh
     DM da_nodal; // Nodal mesh
 
+    // # new; FEA with the TopOpt final results
+    PetscErrorCode FEAWithTopOptResults (Vec xPhys, Vec xPassive0,
+        Vec xPassive1, Vec xPassive2, Vec xPassive3, PetscInt loadConditionFEA,
+        PetscScalar *loadVectorFEAp);
+
   private:
     // Logical mesh
     PetscInt nn[DIM]; // Number of nodes in each direction
@@ -82,7 +87,8 @@ class LinearHeatConduction {
     PetscInt nlvls;
 
     // Loading conditions
-    PetscInt numLoads; // # new; number of loading conditions
+    PetscInt numDES; // # new; number of loading conditions
+    PetscInt numLODFIX; // # new; number of loading conditions
 
     // Element dimensions
     PetscScalar dx, dy, dz; // # new
@@ -92,7 +98,7 @@ class LinearHeatConduction {
 
     // Set up the FE mesh and data structures
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, DM da_elem, Vec xPassive0,
-        Vec xPassive1, Vec xPassive2, Vec xPassive3);
+        Vec xPassive1, Vec xPassive2, Vec xPassive3, PetscInt loadCondition);
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,

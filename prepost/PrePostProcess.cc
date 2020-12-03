@@ -36,11 +36,14 @@ PrePostProcess::PrePostProcess (TopOpt *opt) {
   dy = opt->dy;
   dz = opt->dz;
 #endif
-//  this->numLoads = 1; //opt->numLoads;
-  this->numLoads = opt->numLoads;
+  this->numDES = opt->numDES;
+  this->numSLD = opt->numSLD;
+  this->numLODFIX = opt->numLODFIX;
   voxIndex = 0;
-  occFIX.resize (numLoads);
-  occLOD.resize (numLoads);
+  occDES.resize (numDES);
+  occSLD.resize (numSLD);
+  occFIX.resize (numLODFIX);
+  occLOD.resize (numLODFIX);
 }
 
 PrePostProcess::~PrePostProcess () {
@@ -81,7 +84,8 @@ PetscErrorCode PrePostProcess::DesignDomainInitialization (TopOpt *opt) {
   return ierr;
 }
 
-PetscErrorCode PrePostProcess::CalculateNodeLoadAddingTotalCounts (TopOpt *opt) {
+PetscErrorCode PrePostProcess::CalculateNodeLoadAddingTotalCounts (
+    TopOpt *opt) {
   PetscErrorCode ierr = 0;
 
   // Get the FE mesh structure (from the nodal mesh)
@@ -133,8 +137,8 @@ PetscErrorCode PrePostProcess::CalculateNodeLoadAddingTotalCounts (TopOpt *opt) 
 
   VecAssemblyBegin (opt->nodeAddingCounts);
   VecAssemblyEnd (opt->nodeAddingCounts);
-  PetscScalar tmp;  // need to use this tmp variable because VecSum does not accept PetscInt
-  VecSum(opt->nodeAddingCounts, &tmp);
+  PetscScalar tmp; // need to use this tmp variable because VecSum does not accept PetscInt
+  VecSum (opt->nodeAddingCounts, &tmp);
   opt->numNodeLoadAddingCounts = static_cast<PetscInt> (tmp);
   VecAssemblyBegin (opt->nodeAddingCounts);
   VecAssemblyEnd (opt->nodeAddingCounts);
@@ -228,27 +232,35 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
 
   // Read and voxelize the geometries
   t1 = MPI_Wtime ();
-  if (!opt->inputSTL_DES[0].empty ())
-    ierr = sv->Read_file (opt->inputSTL_DES[0]);
-  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+  for (unsigned int designDomain = 0; designDomain < numDES;
+      ++designDomain) {
+    if (!opt->inputSTL_DES[designDomain].empty ())
+      ierr = sv->Read_file (opt->inputSTL_DES[designDomain]);
+  }
+  for (unsigned int solidDomain = 0; solidDomain < numSLD;
+      ++solidDomain) {
+    if (!opt->inputSTL_SLD[solidDomain].empty ())
+      ierr = sv->Read_file (opt->inputSTL_SLD[solidDomain]);
+    t2 = MPI_Wtime ();
+    PetscPrintf (PETSC_COMM_WORLD, "# Read STL files took: %f s\n", t2 - t1);
+  }
+  for (unsigned int loadCondition = 0; loadCondition < numLODFIX;
       ++loadCondition) {
-    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+    for (unsigned int backSearch = 0; backSearch <= loadCondition;
+        ++backSearch) {
       if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
         ierr = sv->Read_file (opt->inputSTL_FIX[loadCondition - backSearch]);
         break;
       }
     }
-    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+    for (unsigned int backSearch = 0; backSearch <= loadCondition;
+        ++backSearch) {
       if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
         ierr = sv->Read_file (opt->inputSTL_LOD[loadCondition - backSearch]);
         break;
       }
     }
   }
-  if (!opt->inputSTL_SLD[0].empty ())
-    ierr = sv->Read_file (opt->inputSTL_SLD[0]);
-  t2 = MPI_Wtime ();
-  PetscPrintf (PETSC_COMM_WORLD, "# Read STL files took: %f s\n", t2 - t1);
 
   t1 = MPI_Wtime ();
   sv->ScaleAndTranslate (nx, ny, nz, dx, dy, dz);
@@ -256,30 +268,59 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
   PetscPrintf (PETSC_COMM_WORLD, "# Scale and translate took: %f s\n",
       t2 - t1);
 
-  // Part domain voxelization
-  if (!opt->inputSTL_DES[0].empty ()) {
-    t1 = MPI_Wtime ();
-    sv->Voxelize_surface (occDES, nx, ny, nz, dx, dy, dz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD,
-        "# Voxelization of DES surface took: %f s\n",
-        t2 - t1);
-    t1 = MPI_Wtime ();
-    sv->Voxelize_solid (occDES, nx, ny, nz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of DES solid took: %f s\n",
-        t2 - t1);
-    PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
-        opt->inputSTL_DES[0].c_str ());
+  // Design domain voxelization
+  for (unsigned int designDomain = 0; designDomain < numDES;
+      ++designDomain) {
+    // Part domain voxelization
+    if (!opt->inputSTL_DES[designDomain].empty ()) {
+      t1 = MPI_Wtime ();
+      sv->Voxelize_surface (occDES[designDomain], nx, ny, nz, dx, dy, dz);
+      t2 = MPI_Wtime ();
+      PetscPrintf (PETSC_COMM_WORLD,
+          "# Voxelization of DES%d surface took: %f s\n", designDomain,
+          t2 - t1);
+      t1 = MPI_Wtime ();
+      sv->Voxelize_solid (occDES[designDomain], nx, ny, nz);
+      t2 = MPI_Wtime ();
+      PetscPrintf (PETSC_COMM_WORLD,
+          "# Voxelization of DES%d solid took: %f s\n", designDomain,
+          t2 - t1);
+      PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
+          opt->inputSTL_DES[designDomain].c_str ());
+    }
   }
 
-  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+  // Non-designable solid domain voxelization
+  for (unsigned int solidDomain = 0; solidDomain < numSLD;
+      ++solidDomain) {
+    if (!opt->inputSTL_SLD[solidDomain].empty ()) {
+      t1 = MPI_Wtime ();
+      sv->Voxelize_surface (occSLD[solidDomain], nx, ny, nz, dx, dy, dz);
+      t2 = MPI_Wtime ();
+      PetscPrintf (PETSC_COMM_WORLD,
+          "# Voxelization of SLD%d surface took: %f s\n", solidDomain,
+          t2 - t1);
+      t1 = MPI_Wtime ();
+      sv->Voxelize_solid (occSLD[solidDomain], nx, ny, nz);
+      t2 = MPI_Wtime ();
+      PetscPrintf (PETSC_COMM_WORLD,
+          "# Voxelization of SLD%d solid took: %f s\n", solidDomain,
+          t2 - t1);
+      PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
+          opt->inputSTL_SLD[solidDomain].c_str ());
+    }
+  }
+
+  // Load and fixture domain voxelization
+  for (unsigned int loadCondition = 0; loadCondition < numLODFIX;
       ++loadCondition) {
-    // Fixture domain voxelization
-    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+    // fixture
+    for (unsigned int backSearch = 0; backSearch <= loadCondition;
+        ++backSearch) {
       if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
         t1 = MPI_Wtime ();
-        sv->Voxelize_surface (occFIX[loadCondition], nx, ny, nz, dx, dy, dz);
+        sv->Voxelize_surface (occFIX[loadCondition], nx, ny, nz, dx, dy,
+            dz);
         t2 = MPI_Wtime ();
         PetscPrintf (PETSC_COMM_WORLD,
             "# Voxelization of FIX%d surface took: %f s\n", loadCondition,
@@ -295,11 +336,13 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
         break;
       }
     }
-    // Load domain voxelization
-    for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
+    // Load
+    for (unsigned int backSearch = 0; backSearch <= loadCondition;
+        ++backSearch) {
       if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
         t1 = MPI_Wtime ();
-        sv->Voxelize_surface (occLOD[loadCondition], nx, ny, nz, dx, dy, dz);
+        sv->Voxelize_surface (occLOD[loadCondition], nx, ny, nz, dx, dy,
+            dz);
         t2 = MPI_Wtime ();
         PetscPrintf (PETSC_COMM_WORLD,
             "# Voxelization of LOD%d surface took: %f s\n", loadCondition,
@@ -315,23 +358,6 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
         break;
       }
     }
-  }
-
-  // Non-designable solid domain voxelization
-  if (!opt->inputSTL_SLD[0].empty ()) {
-    t1 = MPI_Wtime ();
-    sv->Voxelize_surface (occSLD, nx, ny, nz, dx, dy, dz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD,
-        "# Voxelization of SLD surface took: %f s\n",
-        t2 - t1);
-    t1 = MPI_Wtime ();
-    sv->Voxelize_solid (occSLD, nx, ny, nz);
-    t2 = MPI_Wtime ();
-    PetscPrintf (PETSC_COMM_WORLD, "# Voxelization of SLD solid took: %f s\n",
-        t2 - t1);
-    PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
-        opt->inputSTL_SLD[0].c_str ());
   }
 
   // Clean up the voxelizer class
@@ -419,41 +445,46 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
       xp_2D[j][i] = 0.0;
 
       voxIndex = j * nx + i;
-      if (!opt->inputSTL_DES[0].empty ()) {
-        occTmp = occDES[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1) {
-          xp_2D[j][i] = opt->volfrac;
-          xPassive0p_2D[j][i] = 0;
-          xPassive1p_2D[j][i] = 0;
-          xPassive2p_2D[j][i] = 0;
-          xPassive3p_2D[j][i] = 0;
-        } else {
-          xp_2D[j][i] = 0.0;
-          xPassive0p_2D[j][i] = 1;
-          xPassive1p_2D[j][i] = 0;
-          xPassive2p_2D[j][i] = 0;
-          xPassive3p_2D[j][i] = 0;
+      for (unsigned int designDomain = 0; designDomain < numDES;
+          ++designDomain) {
+        if (!opt->inputSTL_DES[designDomain].empty ()) {
+          occTmp = occDES[designDomain][voxIndex / BATCH];
+          if ((occTmp >> (voxIndex % BATCH)) & 1) {
+            xp_2D[j][i] = opt->volfrac;
+            xPassive0p_2D[j][i] += 1.0 * std::pow (2, 1.0 * designDomain);
+            xPassive1p_2D[j][i] = 0;
+            xPassive2p_2D[j][i] = 0;
+            xPassive3p_2D[j][i] = 0;
+          } else {
+            xp_2D[j][i] = 0.0;
+            xPassive0p_2D[j][i] = 0;
+            xPassive1p_2D[j][i] = 0;
+            xPassive2p_2D[j][i] = 0;
+            xPassive3p_2D[j][i] = 0;
+          }
         }
       }
 
-      for (unsigned int loadCondition = 0; loadCondition < numLoads;
-          ++loadCondition) {
-        for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
-          if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
-            occTmp = occFIX[loadCondition][voxIndex / BATCH];
-            if ((occTmp >> (voxIndex % BATCH)) & 1) {
-              xp_2D[j][i] = 1.0;
-              xPassive0p_2D[j][i] = 0;
-              xPassive1p_2D[j][i] += 1.0 * std::pow (2, 1.0 * loadCondition);
-              xPassive2p_2D[j][i] = 0;
-              xPassive3p_2D[j][i] = 0;
-            }
-            break;
+      for (unsigned int solidDomain = 0; solidDomain < numSLD;
+          ++solidDomain) {
+        if (!opt->inputSTL_SLD[solidDomain].empty ()) {
+          occTmp = occSLD[solidDomain][voxIndex / BATCH];
+          if ((occTmp >> (voxIndex % BATCH)) & 1) {
+            xp_2D[j][i] = 1.0;
+            xPassive0p_2D[j][i] = 0;
+            xPassive1p_2D[j][i] += 1.0 * std::pow (2, 1.0 * solidDomain);
+            xPassive2p_2D[j][i] = 0;
+            xPassive3p_2D[j][i] = 0;
           }
         }
-        for (unsigned int backSearch = 0; backSearch <= loadCondition; ++backSearch) {
-          if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
-            occTmp = occLOD[loadCondition][voxIndex / BATCH];
+      }
+
+      for (unsigned int loadCondition = 0; loadCondition < numLODFIX;
+          ++loadCondition) {
+        for (unsigned int backSearch = 0; backSearch <= loadCondition;
+            ++backSearch) {
+          if (!opt->inputSTL_FIX[loadCondition - backSearch].empty ()) {
+            occTmp = occFIX[loadCondition][voxIndex / BATCH];
             if ((occTmp >> (voxIndex % BATCH)) & 1) {
               xp_2D[j][i] = 1.0;
               xPassive0p_2D[j][i] = 0;
@@ -464,18 +495,22 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
             break;
           }
         }
-      }
-
-      if (!opt->inputSTL_SLD[0].empty ()) {
-        occTmp = occSLD[voxIndex / BATCH];
-        if ((occTmp >> (voxIndex % BATCH)) & 1) {
-          xp_2D[j][i] = 1.0;
-          xPassive0p_2D[j][i] = 0;
-          xPassive1p_2D[j][i] = 0;
-          xPassive2p_2D[j][i] = 0;
-          xPassive3p_2D[j][i] = 1;
+        for (unsigned int backSearch = 0; backSearch <= loadCondition;
+            ++backSearch) {
+          if (!opt->inputSTL_LOD[loadCondition - backSearch].empty ()) {
+            occTmp = occLOD[loadCondition][voxIndex / BATCH];
+            if ((occTmp >> (voxIndex % BATCH)) & 1) {
+              xp_2D[j][i] = 1.0;
+              xPassive0p_2D[j][i] = 0;
+              xPassive1p_2D[j][i] = 0;
+              xPassive2p_2D[j][i] = 0;
+              xPassive3p_2D[j][i] += 1.0 * std::pow (2, 1.0 * loadCondition);
+            }
+            break;
+          }
         }
       }
+
     }
   }
 
@@ -507,7 +542,8 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
 
 #elif DIM ==3
   // Get pointer to the densities and xpassive index vec
-  PetscScalar ***xp_3D, ***xPassive0p_3D, ***xPassive1p_3D, ***xPassive2p_3D,
+  PetscScalar ***xp_3D, ***xPassive0p_3D, ***xPassive1p_3D,
+      ***xPassive2p_3D,
       ***xPassive3p_3D;
 
   // Local vector of the global x and xPassive vectors
@@ -564,24 +600,43 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
         xp_3D[k][j][i] = 0.0;
         voxIndex = k * nx * ny + j * nx + i;
 
-        if (!opt->inputSTL_DES[0].empty ()) {
-          occTmp = occDES[voxIndex / BATCH];
-          if ((occTmp >> (voxIndex % BATCH)) & 1) {
-            xp_3D[k][j][i] = opt->volfrac;
-            xPassive0p_3D[k][j][i] = 0;
-            xPassive1p_3D[k][j][i] = 0;
-            xPassive2p_3D[k][j][i] = 0;
-            xPassive3p_3D[k][j][i] = 0;
-          } else {
-            xp_3D[k][j][i] = 0.0;
-            xPassive0p_3D[k][j][i] = 1;
-            xPassive1p_3D[k][j][i] = 0;
-            xPassive2p_3D[k][j][i] = 0;
-            xPassive3p_3D[k][j][i] = 0;
+        for (unsigned int designDomain = 0; designDomain < numDES;
+            ++designDomain) {
+          if (!opt->inputSTL_DES[designDomain].empty ()) {
+            occTmp = occDES[designDomain][voxIndex / BATCH];
+            if ((occTmp >> (voxIndex % BATCH)) & 1) {
+              xp_3D[k][j][i] = opt->volfrac;
+              xPassive0p_3D[k][j][i] += 1.0
+                                        * std::pow (2, 1.0 * designDomain);
+              xPassive1p_3D[k][j][i] = 0;
+              xPassive2p_3D[k][j][i] = 0;
+              xPassive3p_3D[k][j][i] = 0;
+            } else {
+              xp_3D[k][j][i] = 0.0;
+              xPassive0p_3D[k][j][i] = 0;
+              xPassive1p_3D[k][j][i] = 0;
+              xPassive2p_3D[k][j][i] = 0;
+              xPassive3p_3D[k][j][i] = 0;
+            }
           }
         }
 
-        for (unsigned int loadCondition = 0; loadCondition < numLoads;
+        for (unsigned int solidDomain = 0; solidDomain < numSLD;
+            ++solidDomain) {
+          if (!opt->inputSTL_SLD[solidDomain].empty ()) {
+            occTmp = occSLD[solidDomain][voxIndex / BATCH];
+            if ((occTmp >> (voxIndex % BATCH)) & 1) {
+              xp_3D[k][j][i] = 1.0;
+              xPassive0p_3D[k][j][i] = 0;
+              xPassive1p_3D[k][j][i] += 1.0
+                                        * std::pow (2, 1.0 * solidDomain);
+              xPassive2p_3D[k][j][i] = 0;
+              xPassive3p_3D[k][j][i] = 0;
+            }
+          }
+        }
+
+        for (unsigned int loadCondition = 0; loadCondition < numLODFIX;
             ++loadCondition) {
           for (unsigned int backSearch = 0; backSearch <= loadCondition;
               ++backSearch) {
@@ -590,9 +645,9 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
               if ((occTmp >> (voxIndex % BATCH)) & 1) {
                 xp_3D[k][j][i] = 1.0;
                 xPassive0p_3D[k][j][i] = 0;
-                xPassive1p_3D[k][j][i] += 1.0
+                xPassive1p_3D[k][j][i] = 0;
+                xPassive2p_3D[k][j][i] += 1.0
                                           * std::pow (2, 1.0 * loadCondition);
-                xPassive2p_3D[k][j][i] = 0;
                 xPassive3p_3D[k][j][i] = 0;
               }
               break;
@@ -606,25 +661,15 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
                 xp_3D[k][j][i] = 1.0;
                 xPassive0p_3D[k][j][i] = 0;
                 xPassive1p_3D[k][j][i] = 0;
-                xPassive2p_3D[k][j][i] += 1.0
+                xPassive2p_3D[k][j][i] = 0;
+                xPassive3p_3D[k][j][i] += 1.0
                                           * std::pow (2, 1.0 * loadCondition);
-                xPassive3p_3D[k][j][i] = 0;
               }
               break;
             }
           }
         }
 
-        if (!opt->inputSTL_SLD[0].empty ()) {
-          occTmp = occSLD[voxIndex / BATCH];
-          if ((occTmp >> (voxIndex % BATCH)) & 1) {
-            xp_3D[k][j][i] = 1.0;
-            xPassive0p_3D[k][j][i] = 0;
-            xPassive1p_3D[k][j][i] = 0;
-            xPassive2p_3D[k][j][i] = 0;
-            xPassive3p_3D[k][j][i] = 1;
-          }
-        }
       }
     }
   }
@@ -683,20 +728,31 @@ PrePostProcess::CleanUp ()
 {
   PetscErrorCode ierr = 0;
 
-  std::vector<int> ().swap (occDES);
-  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+  for (unsigned int designDomain = 0; designDomain < numDES;
+      ++designDomain) {
+    std::vector<int> ().swap (occDES[designDomain]);
+  }
+  for (unsigned int solidDomain = 0; solidDomain < numSLD;
+      ++solidDomain) {
+    std::vector<int> ().swap (occSLD[solidDomain]);
+  }
+  for (unsigned int loadCondition = 0; loadCondition < numLODFIX;
       ++loadCondition) {
     std::vector<int> ().swap (occFIX[loadCondition]);
     std::vector<int> ().swap (occLOD[loadCondition]);
   }
-  std::vector<int> ().swap (occSLD);
-
-  ierr = occDES.size ();
-  for (unsigned int loadCondition = 0; loadCondition < numLoads;
+  for (unsigned int designDomain = 0; designDomain < numDES;
+      ++designDomain) {
+    ierr += occDES[designDomain].size ();
+  }
+  for (unsigned int solidDomain = 0; solidDomain < numSLD;
+      ++solidDomain) {
+    ierr += occSLD[solidDomain].size ();
+  }
+  for (unsigned int loadCondition = 0; loadCondition < numLODFIX;
       ++loadCondition) {
     ierr += occFIX[loadCondition].size () + occLOD[loadCondition].size ();
   }
-  ierr += occSLD.size ();
 
   return ierr;
 }
@@ -748,7 +804,8 @@ PrePostProcess::DMDAGetElements_2D (DM dm, PetscInt *nel,
 }
 
 #elif DIM == 3
-PetscErrorCode PrePostProcess::DMDAGetElements_3D (DM dm, PetscInt *nel,
+PetscErrorCode
+PrePostProcess::DMDAGetElements_3D (DM dm, PetscInt *nel,
     PetscInt *nen, const PetscInt *e[]) {
   PetscErrorCode ierr;
   DM_DA *da = (DM_DA*) dm->data;

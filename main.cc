@@ -58,17 +58,17 @@ int main (int argc, char *argv[]) {
   // 0 - linear elasticity, 1 - linear heat conduction, 2 - compliant
 #if PHYSICS == 0
   LinearElasticity *physics = new LinearElasticity (opt->da_nodes, opt->m,
-      opt->numLoads, opt->numNodeLoadAddingCounts, opt->nu, opt->E,
-      opt->loadVector, opt->xPassive0, opt->xPassive1, opt->xPassive2,
+      opt->numDES, opt->numLODFIX, opt->numNodeLoadAddingCounts, opt->nu,
+      opt->E, opt->loadVector, opt->xPassive0, opt->xPassive1, opt->xPassive2,
       opt->xPassive3);
 #elif PHYSICS ==1
   LinearCompliant *physics = new LinearCompliant (opt->da_nodes, opt->m,
-      opt->numLoads, opt->xPassive0, opt->xPassive1, opt->xPassive2,
-      opt->xPassive3); // # new
+      opt->numDES, opt->numLODFIX, opt->nu, opt->E, opt->xPassive0,
+      opt->xPassive1, opt->xPassive2, opt->xPassive3); // # new
 #elif PHYSICS == 2
   LinearHeatConduction *physics = new LinearHeatConduction (opt->da_nodes,
-      opt->da_elem, opt->m, opt->numLoads, opt->xPassive0, opt->xPassive1,
-      opt->xPassive2, opt->xPassive3);    // # new
+      opt->da_elem, opt->m, opt->numDES, opt->numLODFIX, opt->xPassive0,
+      opt->xPassive1, opt->xPassive2, opt->xPassive3); // # new
 #endif
 
   // STEP 4: THE FILTERING
@@ -172,6 +172,18 @@ int main (int argc, char *argv[]) {
       physics->WriteRestartFiles ();
     }
   }
+
+  // # new; FEA with the TopOpt final results
+  for (PetscInt loadConditionFEA = 0; loadConditionFEA < opt->numLODFIXFEA;
+      ++loadConditionFEA) {
+    physics->FEAWithTopOptResults (opt->xPhys, opt->xPassive0, opt->xPassive1,
+        opt->xPassive2, opt->xPassive3, loadConditionFEA, opt->loadVectorFEA);
+    output->WriteVTK (physics->da_nodal, physics->GetStateField (),
+        opt->nodeDensity, opt->x, opt->xTilde, opt->xPhys, opt->xPassive0,
+        opt->xPassive1, opt->xPassive2, opt->xPassive3, itr); // # modified
+    itr++;
+  }
+
   // Write restart WriteRestartFiles
   opt->WriteRestartFiles (&itr, mma);
   physics->WriteRestartFiles ();

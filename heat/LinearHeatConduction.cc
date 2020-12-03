@@ -14,8 +14,8 @@
  */
 
 LinearHeatConduction::LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt m,
-    PetscInt numLoads, Vec xPassive0, Vec xPassive1, Vec xPassive2,
-    Vec xPassive3) {
+    PetscInt numDES, PetscInt numLODFIX, Vec xPassive0, Vec xPassive1,
+    Vec xPassive2, Vec xPassive3) {
   // Set pointers to null
   K = NULL;
   U = NULL;
@@ -30,22 +30,26 @@ LinearHeatConduction::LinearHeatConduction (DM da_nodes, DM da_elem, PetscInt m,
   PetscOptionsGetInt (NULL, NULL, "-nlvls", &nlvls, &flg);
 
   this->m = m;
-  this->numLoads = numLoads; // num of loads, save for internal uses
+  this->numDES = numDES; // num of design domain, save for internal uses
+  this->numLODFIX = numLODFIX; // num of loads, save for internal uses
 
-  RHS = new Vec[numLoads];
-  N = new Vec[numLoads];
+  RHS = new Vec[numLODFIX];
+  N = new Vec[numLODFIX];
 
   // Setup heat conductivity matrix, heat load vector and bcs (Dirichlet) for the design
   // problem
-  SetUpLoadAndBC (da_nodes, da_elem, xPassive0, xPassive1, xPassive2,
-      xPassive3);
+  for (PetscInt loadCondition = 0; loadCondition < this->numLODFIX;
+      ++loadCondition) { // # new
+    SetUpLoadAndBC (da_nodes, da_elem, xPassive0, xPassive1, xPassive2,
+        xPassive3, loadCondition);
+  }
 }
 
 LinearHeatConduction::~LinearHeatConduction () {
   // Deallocate
   VecDestroy (&(U));
-  VecDestroyVecs (numLoads, &(RHS));
-  VecDestroyVecs (numLoads, &(N));
+  VecDestroyVecs (numLODFIX, &(RHS));
+  VecDestroyVecs (numLODFIX, &(N));
   MatDestroy (&(K));
   KSPDestroy (&(ksp));
 
@@ -55,92 +59,93 @@ LinearHeatConduction::~LinearHeatConduction () {
 }
 
 PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
-    Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3) {
+    Vec xPassive0, Vec xPassive1, Vec xPassive2, Vec xPassive3,
+    PetscInt loadCondition) {
   PetscErrorCode ierr = 0;
 
 #if  DIM == 2
-  // Extract information from input DM and create one for the linear elasticity
-  // number of nodal dofs: (u,v)
-  PetscInt numnodaldof = 1;
+  if (da_nodal == NULL) { // # new; Only set up da_nodal once
+    // Extract information from input DM and create one for the linear elasticity
+    // number of nodal dofs: (u,v)
+    PetscInt numnodaldof = 1;
 
-  // Stencil width: each node connects to a box around it - linear elements
-  PetscInt stencilwidth = 1;
+    // Stencil width: each node connects to a box around it - linear elements
+    PetscInt stencilwidth = 1;
 
-  PetscScalar dx, dy;
-  DMBoundaryType bx, by;
-  DMDAStencilType stype;
-  {
-    // Extract information from the nodal mesh
-    PetscInt M, N, md, nd;
-    DMDAGetInfo (da_nodes, NULL, &M, &N, NULL, &md, &nd, NULL, NULL, NULL, &bx,
-        &by, NULL, &stype);
+    PetscScalar dx, dy;
+    DMBoundaryType bx, by;
+    DMDAStencilType stype;
+    {
+      // Extract information from the nodal mesh
+      PetscInt M, N, md, nd;
+      DMDAGetInfo (da_nodes, NULL, &M, &N, NULL, &md, &nd, NULL, NULL, NULL,
+          &bx,
+          &by, NULL, &stype);
 
-    // Find the element size
-    Vec lcoor;
-    DMGetCoordinatesLocal (da_nodes, &lcoor);
-    PetscScalar *lcoorp;
-    VecGetArray (lcoor, &lcoorp);
+      // Find the element size
+      Vec lcoor;
+      DMGetCoordinatesLocal (da_nodes, &lcoor);
+      PetscScalar *lcoorp;
+      VecGetArray (lcoor, &lcoorp);
 
-    PetscInt nel, nen;
-    const PetscInt *necon;
-    DMDAGetElements_2D (da_nodes, &nel, &nen, &necon);
+      PetscInt nel, nen;
+      const PetscInt *necon;
+      DMDAGetElements_2D (da_nodes, &nel, &nen, &necon);
 
-    // Use the first element to compute the dx, dy, dz
-    dx = lcoorp[DIM * necon[0 * nen + 1] + 0]
-         - lcoorp[DIM * necon[0 * nen + 0] + 0];
-    dy = lcoorp[DIM * necon[0 * nen + 2] + 1]
-         - lcoorp[DIM * necon[0 * nen + 1] + 1];
-    VecRestoreArray (lcoor, &lcoorp);
+      // Use the first element to compute the dx, dy, dz
+      dx = lcoorp[DIM * necon[0 * nen + 1] + 0]
+           - lcoorp[DIM * necon[0 * nen + 0] + 0];
+      dy = lcoorp[DIM * necon[0 * nen + 2] + 1]
+           - lcoorp[DIM * necon[0 * nen + 1] + 1];
+      VecRestoreArray (lcoor, &lcoorp);
 
-    nn[0] = M;
-    nn[1] = N;
+      nn[0] = M;
+      nn[1] = N;
 
-    ne[0] = nn[0] - 1;
-    ne[1] = nn[1] - 1;
+      ne[0] = nn[0] - 1;
+      ne[1] = nn[1] - 1;
 
-    xc[0] = 0.0;
-    xc[1] = ne[0] * dx;
-    xc[2] = 0.0;
-    xc[3] = ne[1] * dy;
+      xc[0] = 0.0;
+      xc[1] = ne[0] * dx;
+      xc[2] = 0.0;
+      xc[3] = ne[1] * dy;
+    }
+
+    // Create the nodal mesh
+    DMDACreate2d (PETSC_COMM_WORLD, bx, by, stype, nn[0], nn[1], PETSC_DECIDE,
+    PETSC_DECIDE, numnodaldof, stencilwidth, 0, 0, &(da_nodal));
+    // Initialize
+    DMSetFromOptions (da_nodal);
+    DMSetUp (da_nodal);
+
+    // Set the coordinates
+    DMDASetUniformCoordinates (da_nodal, xc[0], xc[1], xc[2], xc[3], 0.0, 0.0);
+    // Set the element type to Q1: Otherwise calls to GetElements will change to
+    // P1 ! STILL DOESN*T WORK !!!!
+    DMDASetElementType (da_nodal, DMDA_ELEMENT_Q1);
+
+    // Allocate matrix and the RHS and Solution vector and Dirichlet vector
+    ierr = DMCreateMatrix (da_nodal, &(K));
+    CHKERRQ(ierr);
+    ierr = DMCreateGlobalVector (da_nodal, &(U));
+    CHKERRQ(ierr);
+    VecDuplicateVecs (U, numLODFIX, &(RHS));
+    VecDuplicateVecs (U, numLODFIX, &(N));
+
+    // Set the local heat conductivity matrix
+    PetscScalar X[4] = { 0.0, dx, dx, 0.0 };
+    PetscScalar Y[4] = { 0.0, 0.0, dy, dy };
+
+    // Compute the element stiffnes matrix - constant due to structured grid
+    Quad4Isoparametric (X, Y, false, KE);
+
+    // Save the element size for other uses
+    this->dx = dx;
+    this->dy = dy;
   }
-
-  // Create the nodal mesh
-  DMDACreate2d (PETSC_COMM_WORLD, bx, by, stype, nn[0], nn[1], PETSC_DECIDE,
-  PETSC_DECIDE, numnodaldof, stencilwidth, 0, 0, &(da_nodal));
-  // Initialize
-  DMSetFromOptions (da_nodal);
-  DMSetUp (da_nodal);
-
-  // Set the coordinates
-  DMDASetUniformCoordinates (da_nodal, xc[0], xc[1], xc[2], xc[3], 0.0, 0.0);
-  // Set the element type to Q1: Otherwise calls to GetElements will change to
-  // P1 ! STILL DOESN*T WORK !!!!
-  DMDASetElementType (da_nodal, DMDA_ELEMENT_Q1);
-
-  // Allocate matrix and the RHS and Solution vector and Dirichlet vector
-  ierr = DMCreateMatrix (da_nodal, &(K));
-  CHKERRQ(ierr);
-  ierr = DMCreateGlobalVector (da_nodal, &(U));
-  CHKERRQ(ierr);
-  VecDuplicateVecs (U, numLoads, &(RHS));
-  VecDuplicateVecs (U, numLoads, &(N));
-
-  // Set the local heat conductivity matrix
-  PetscScalar X[4] = { 0.0, dx, dx, 0.0 };
-  PetscScalar Y[4] = { 0.0, 0.0, dy, dy };
-
-  // Compute the element stiffnes matrix - constant due to structured grid
-  Quad4Isoparametric (X, Y, false, KE);
-
-  // Save the element size for other uses
-  this->dx = dx;
-  this->dy = dy;
-
   // Set the RHS and Dirichlet vector
-  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
-    VecSet (N[loadCondition], 1.0);
-    VecSet (RHS[loadCondition], 0.0);
-  }
+  VecSet (N[loadCondition], 1.0);
+  VecSet (RHS[loadCondition], 0.0);
 
   // Global coordinates and a pointer
   Vec lcoor; // borrowed ref - do not destroy!
@@ -183,174 +188,170 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   const PetscInt *necon;
   DMDAGetElements_2D (da_nodes, &nel, &nen, &necon);
 
-  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
-    if (IMPORT_GEO == 0) {
-      // Set the values:
-      // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
-      //               RHS(z) = 0.001 within the whole domain;
-      PetscScalar LoadIntensity = 0.001;
-      for (PetscInt i = 0; i < nn; i++) {
-        // Make an area with all dofs clamped, (1/4 * 1/4) of the bottom
-        if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
-            && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)) {
-          VecSetValueLocal (N[loadCondition], i / 2, 0.0, INSERT_VALUES);
-        }
+  if (IMPORT_GEO == 0) {
+    // Set the values:
+    // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
+    //               RHS(z) = 0.001 within the whole domain;
+    PetscScalar LoadIntensity = 0.001;
+    for (PetscInt i = 0; i < nn; i++) {
+      // Make an area with all dofs clamped, (1/4 * 1/4) of the bottom
+      if (i % 2 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
+          && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)) {
+        VecSetValueLocal (N[loadCondition], i / 2, 0.0, INSERT_VALUES);
       }
+    }
 
-      // Every point has a thermal load except the clamped area
-      // Since the heat load is a body load, need to loop over elements
-      // So that don't need to adjust the boundaries and the corners
-      for (PetscInt i = 0; i < nel; i++) {
-        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
+    // Every point has a thermal load except the clamped area
+    // Since the heat load is a body load, need to loop over elements
+    // So that don't need to adjust the boundaries and the corners
+    for (PetscInt i = 0; i < nel; i++) {
+      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
 
-        // Global dof in the RHS vector
-        for (PetscInt l = 0; l < nen; l++) {
-          edof[l] = necon[i * nen + l]; // dof in globe
-        }
+      // Global dof in the RHS vector
+      for (PetscInt l = 0; l < nen; l++) {
+        edof[l] = necon[i * nen + l]; // dof in globe
+      }
+      for (PetscInt j = 0; j < 4; j++) {
+        rhs_ele[j] = 1.0 / 4 * LoadIntensity;
+      }
+      ierr = VecSetValuesLocal (RHS[loadCondition], 4, edof, rhs_ele,
+          ADD_VALUES);
+      CHKERRQ(ierr);
+    }
+
+  } else {
+    // Set the values:
+    // In this case:
+    // xPassive2 indicates fix,
+    // xPassive3 indicates loading.
+    // Load and constraints
+    PetscScalar LoadIntensity = 0.001;
+    for (PetscInt i = 0; i < nel; i++) {
+      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
+      memset (n_ele, 0.0, sizeof(n_ele[0]) * 4);
+
+      // Global dof in the RHS vector
+      for (PetscInt l = 0; l < nen; l++) {
+        edof[l] = necon[i * nen + l]; // dof in globe
+      }
+      if (xPassive0p[i] != 0) {
         for (PetscInt j = 0; j < 4; j++) {
-          rhs_ele[j] = 1.0 / 4 * LoadIntensity;
+          rhs_ele[j] = LoadIntensity;
         }
         ierr = VecSetValuesLocal (RHS[loadCondition], 4, edof, rhs_ele,
             ADD_VALUES);
         CHKERRQ(ierr);
       }
-
-    } else {
-      // Set the values:
-      // In this case:
-      // xPassive1 indicates fix,
-      // xPassive2 indicates loading.
-      // Load and constraints
-      PetscScalar LoadIntensity = 0.001;
-      for (PetscInt i = 0; i < nel; i++) {
-        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 4);
-        memset (n_ele, 0.0, sizeof(n_ele[0]) * 4);
-
-        // Global dof in the RHS vector
-        for (PetscInt l = 0; l < nen; l++) {
-          edof[l] = necon[i * nen + l]; // dof in globe
+      if (xPassive2p[i] != 0) {
+        for (PetscInt j = 0; j < 4; j++) {
+          n_ele[j] = 0.0;
         }
-        if (xPassive0p[i] == 0) {
-          for (PetscInt j = 0; j < 4; j++) {
-            rhs_ele[j] = LoadIntensity;
-          }
-          ierr = VecSetValuesLocal (RHS[loadCondition], 4, edof, rhs_ele,
-              ADD_VALUES);
-          CHKERRQ(ierr);
-        }
-        if (xPassive1p[i] != 0) {
-          for (PetscInt j = 0; j < 4; j++) {
-            n_ele[j] = 0.0;
-          }
-          ierr = VecSetValuesLocal (N[loadCondition], 4, edof, n_ele,
-              INSERT_VALUES);
-          CHKERRQ(ierr);
-        }
+        ierr = VecSetValuesLocal (N[loadCondition], 4, edof, n_ele,
+            INSERT_VALUES);
+        CHKERRQ(ierr);
       }
     }
-    VecAssemblyBegin (N[loadCondition]);
-    VecAssemblyEnd (N[loadCondition]);
-    VecAssemblyBegin (RHS[loadCondition]);
-    VecAssemblyEnd (RHS[loadCondition]);
   }
+
 #endif
 
 #if DIM == 3
-  // Extract information from input DM and create one for the linear elasticity
-  // number of nodal dofs: (u,v,w)
-  PetscInt numnodaldof = 1;
+  if (da_nodal == NULL) { // # new; Only set up da_nodal once
+    // Extract information from input DM and create one for the linear elasticity
+    // number of nodal dofs: (u,v,w)
+    PetscInt numnodaldof = 1;
 
-  // Stencil width: each node connects to a box around it - linear elements
-  PetscInt stencilwidth = 1;
+    // Stencil width: each node connects to a box around it - linear elements
+    PetscInt stencilwidth = 1;
 
-  PetscScalar dx, dy, dz;
-  DMBoundaryType bx, by, bz;
-  DMDAStencilType stype;
-  {
-    // Extract information from the nodal mesh
-    PetscInt M, N, P, md, nd, pd;
-    DMDAGetInfo (da_nodes,
-    NULL, &M, &N, &P, &md, &nd, &pd,
-    NULL,
-    NULL, &bx, &by, &bz, &stype);
+    PetscScalar dx, dy, dz;
+    DMBoundaryType bx, by, bz;
+    DMDAStencilType stype;
+    {
+      // Extract information from the nodal mesh
+      PetscInt M, N, P, md, nd, pd;
+      DMDAGetInfo (da_nodes,
+      NULL, &M, &N, &P, &md, &nd, &pd,
+      NULL,
+      NULL, &bx, &by, &bz, &stype);
 
-    // Find the element size
-    Vec lcoor;
-    DMGetCoordinatesLocal (da_nodes, &lcoor);
-    PetscScalar *lcoorp;
-    VecGetArray (lcoor, &lcoorp);
+      // Find the element size
+      Vec lcoor;
+      DMGetCoordinatesLocal (da_nodes, &lcoor);
+      PetscScalar *lcoorp;
+      VecGetArray (lcoor, &lcoorp);
 
-    PetscInt nel, nen;
-    const PetscInt *necon;
-    DMDAGetElements_3D (da_nodes, &nel, &nen, &necon);
+      PetscInt nel, nen;
+      const PetscInt *necon;
+      DMDAGetElements_3D (da_nodes, &nel, &nen, &necon);
 
-    // Use the first element to compute the dx, dy, dz
-    dx = lcoorp[3 * necon[0 * nen + 1] + 0]
-         - lcoorp[3 * necon[0 * nen + 0] + 0];
-    dy = lcoorp[3 * necon[0 * nen + 2] + 1]
-         - lcoorp[3 * necon[0 * nen + 1] + 1];
-    dz = lcoorp[3 * necon[0 * nen + 4] + 2]
-         - lcoorp[3 * necon[0 * nen + 0] + 2];
-    VecRestoreArray (lcoor, &lcoorp);
+      // Use the first element to compute the dx, dy, dz
+      dx = lcoorp[3 * necon[0 * nen + 1] + 0]
+           - lcoorp[3 * necon[0 * nen + 0] + 0];
+      dy = lcoorp[3 * necon[0 * nen + 2] + 1]
+           - lcoorp[3 * necon[0 * nen + 1] + 1];
+      dz = lcoorp[3 * necon[0 * nen + 4] + 2]
+           - lcoorp[3 * necon[0 * nen + 0] + 2];
+      VecRestoreArray (lcoor, &lcoorp);
 
-    nn[0] = M;
-    nn[1] = N;
-    nn[2] = P;
+      nn[0] = M;
+      nn[1] = N;
+      nn[2] = P;
 
-    ne[0] = nn[0] - 1;
-    ne[1] = nn[1] - 1;
-    ne[2] = nn[2] - 1;
+      ne[0] = nn[0] - 1;
+      ne[1] = nn[1] - 1;
+      ne[2] = nn[2] - 1;
 
-    xc[0] = 0.0;
-    xc[1] = ne[0] * dx;
-    xc[2] = 0.0;
-    xc[3] = ne[1] * dy;
-    xc[4] = 0.0;
-    xc[5] = ne[2] * dz;
-  }
+      xc[0] = 0.0;
+      xc[1] = ne[0] * dx;
+      xc[2] = 0.0;
+      xc[3] = ne[1] * dy;
+      xc[4] = 0.0;
+      xc[5] = ne[2] * dz;
+    }
 
-  // Create the nodal mesh
-  DMDACreate3d (PETSC_COMM_WORLD, bx, by, bz, stype, nn[0], nn[1], nn[2],
-  PETSC_DECIDE, PETSC_DECIDE, PETSC_DECIDE, numnodaldof, stencilwidth, 0, 0, 0,
-      &(da_nodal));
-  // Initialize
-  DMSetFromOptions (da_nodal);
-  DMSetUp (da_nodal);
+    // Create the nodal mesh
+    DMDACreate3d (PETSC_COMM_WORLD, bx, by, bz, stype, nn[0], nn[1], nn[2],
+    PETSC_DECIDE, PETSC_DECIDE, PETSC_DECIDE, numnodaldof, stencilwidth, 0, 0,
+        0,
+        &(da_nodal));
+    // Initialize
+    DMSetFromOptions (da_nodal);
+    DMSetUp (da_nodal);
 
-  // Set the coordinates
-  DMDASetUniformCoordinates (da_nodal, xc[0], xc[1], xc[2], xc[3], xc[4],
-      xc[5]);
-  // Set the element type to Q1: Otherwise calls to GetElements will change to
-  // P1 ! STILL DOESN*T WORK !!!!
-  DMDASetElementType (da_nodal, DMDA_ELEMENT_Q1);
+    // Set the coordinates
+    DMDASetUniformCoordinates (da_nodal, xc[0], xc[1], xc[2], xc[3], xc[4],
+        xc[5]);
+    // Set the element type to Q1: Otherwise calls to GetElements will change to
+    // P1 ! STILL DOESN*T WORK !!!!
+    DMDASetElementType (da_nodal, DMDA_ELEMENT_Q1);
 //  DMDASetElementType (da_nodal, DMDA_ELEMENT_Q1);
 
-  // Allocate matrix and the RHS and Solution vector and Dirichlet vector
-  ierr = DMCreateMatrix (da_nodal, &(K));
-  CHKERRQ(ierr);
-  ierr = DMCreateGlobalVector (da_nodal, &(U));
-  CHKERRQ(ierr);
-  VecDuplicateVecs (U, numLoads, &(RHS));
-  VecDuplicateVecs (U, numLoads, &(N));
+    // Allocate matrix and the RHS and Solution vector and Dirichlet vector
+    ierr = DMCreateMatrix (da_nodal, &(K));
+    CHKERRQ(ierr);
+    ierr = DMCreateGlobalVector (da_nodal, &(U));
+    CHKERRQ(ierr);
+    VecDuplicateVecs (U, numLODFIX, &(RHS));
+    VecDuplicateVecs (U, numLODFIX, &(N));
 
-  // Set the local heat conductivity matrix
-  PetscScalar X[8] = { 0.0, dx, dx, 0.0, 0.0, dx, dx, 0.0 };
-  PetscScalar Y[8] = { 0.0, 0.0, dy, dy, 0.0, 0.0, dy, dy };
-  PetscScalar Z[8] = { 0.0, 0.0, 0.0, 0.0, dz, dz, dz, dz };
+    // Set the local heat conductivity matrix
+    PetscScalar X[8] = { 0.0, dx, dx, 0.0, 0.0, dx, dx, 0.0 };
+    PetscScalar Y[8] = { 0.0, 0.0, dy, dy, 0.0, 0.0, dy, dy };
+    PetscScalar Z[8] = { 0.0, 0.0, 0.0, 0.0, dz, dz, dz, dz };
 
-  // Compute the element heat conductivity matrix - constant due to structured grid
-  Hex8Isoparametric (X, Y, Z, false, KE);
+    // Compute the element heat conductivity matrix - constant due to structured grid
+    Hex8Isoparametric (X, Y, Z, false, KE);
 
-  // # new; Save the element size for other uses
-  this->dx = dx;
-  this->dy = dy;
-  this->dz = dz;
+    // # new; Save the element size for other uses
+    this->dx = dx;
+    this->dy = dy;
+    this->dz = dz;
+  }
 
   // Set the RHS and Dirichlet vector
-  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
-    VecSet (N[loadCondition], 1.0);
-    VecSet (RHS[loadCondition], 0.0);
-  }
+  VecSet (N[loadCondition], 1.0);
+  VecSet (RHS[loadCondition], 0.0);
 
   // Global coordinates and a pointer
   Vec lcoor; // borrowed ref - do not destroy!
@@ -394,89 +395,81 @@ PetscErrorCode LinearHeatConduction::SetUpLoadAndBC (DM da_nodes, DM da_elem,
   const PetscInt *necon;
   DMDAGetElements_3D (da_nodes, &nel, &nen, &necon);
 
-  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
-    if (IMPORT_GEO == 0) {
-      // Set the values:
-      // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
-      //               RHS(z) = 0.001 within the whole domain;
-      PetscScalar LoadIntensity = 0.001;
-      for (PetscInt i = 0; i < nn; i++) {
-        // Make an area with all dofs clamped, (1/4 * 1/4) of the
-        if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
-            && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)
-            && (lcoorp[i + 2] >= xc[5] / 8.0 * 3 && lcoorp[i + 2]
-                                                    <= xc[5] / 8.0 * 5)) {
-          VecSetValueLocal (N[loadCondition], i / 3, 0.0, INSERT_VALUES);
-        }
+  if (IMPORT_GEO == 0) {
+    // Set the values:
+    // In this case: N = the wall at (1/4 * 1/4) of the bottom is clamped,
+    //               RHS(z) = 0.001 within the whole domain;
+    PetscScalar LoadIntensity = 0.001;
+    for (PetscInt i = 0; i < nn; i++) {
+      // Make an area with all dofs clamped, (1/4 * 1/4) of the
+      if (i % 3 == 0 && PetscAbsScalar (lcoorp[i + 1] - xc[2]) < epsi
+          && (lcoorp[i] >= xc[1] / 8.0 * 3 && lcoorp[i] <= xc[1] / 8.0 * 5)
+          && (lcoorp[i + 2] >= xc[5] / 8.0 * 3 && lcoorp[i + 2]
+                                                  <= xc[5] / 8.0 * 5)) {
+        VecSetValueLocal (N[loadCondition], i / 3, 0.0, INSERT_VALUES);
       }
+    }
 
-      // Every point has a thermal load except the clamped area
-      // Since the heat load is a body load, need to loop over elements
-      // So that don't need to adjust the boundaries and the corners
-      for (PetscInt i = 0; i < nel; i++) {
-        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
-        memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
+    // Every point has a thermal load except the clamped area
+    // Since the heat load is a body load, need to loop over elements
+    // So that don't need to adjust the boundaries and the corners
+    for (PetscInt i = 0; i < nel; i++) {
+      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
+      memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
 
-        // Global dof in the RHS vector
-        for (PetscInt l = 0; l < nen; l++) {
-          edof[l] = necon[i * nen + l]; // dof in globe
-        }
+      // Global dof in the RHS vector
+      for (PetscInt l = 0; l < nen; l++) {
+        edof[l] = necon[i * nen + l]; // dof in globe
+      }
+      for (PetscInt j = 0; j < 8; j++) {
+        rhs_ele[j] = 1.0 / 8 * LoadIntensity;
+      }
+      ierr = VecSetValuesLocal (RHS[loadCondition], 8, edof, rhs_ele,
+          ADD_VALUES);
+      CHKERRQ(ierr);
+    }
+
+  } else {
+    // Set the values:
+    // In this case:
+    // xPassive2 indicates fix,
+    // xPassive3 indicates loading.
+    // Load and constraints
+    PetscScalar LoadIntensity = 0.001;
+    for (PetscInt i = 0; i < nel; i++) {
+      memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
+      memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
+
+      // Global dof in the RHS vector
+      for (PetscInt l = 0; l < nen; l++) {
+        edof[l] = necon[i * nen + l]; // dof in globe
+      }
+      if (xPassive0p[i] != 0) {
         for (PetscInt j = 0; j < 8; j++) {
-          rhs_ele[j] = 1.0 / 8 * LoadIntensity;
+          rhs_ele[j] = LoadIntensity;
         }
         ierr = VecSetValuesLocal (RHS[loadCondition], 8, edof, rhs_ele,
             ADD_VALUES);
         CHKERRQ(ierr);
       }
-
-    } else {
-      // Set the values:
-      // In this case:
-      // xPassive1 indicates fix,
-      // xPassive2 indicates loading.
-      // Load and constraints
-      PetscScalar LoadIntensity = 0.001;
-      for (PetscInt i = 0; i < nel; i++) {
-        memset (rhs_ele, 0.0, sizeof(rhs_ele[0]) * 8);
-        memset (n_ele, 0.0, sizeof(n_ele[0]) * 8);
-
-        // Global dof in the RHS vector
-        for (PetscInt l = 0; l < nen; l++) {
-          edof[l] = necon[i * nen + l]; // dof in globe
+      if (xPassive2p[i] == 1) {
+        for (PetscInt j = 0; j < 8; j++) {
+          n_ele[j] = 0.0;
         }
-        if (xPassive0p[i] == 0) {
-          for (PetscInt j = 0; j < 8; j++) {
-            rhs_ele[j] = LoadIntensity;
-          }
-          ierr = VecSetValuesLocal (RHS[loadCondition], 8, edof, rhs_ele,
-              ADD_VALUES);
-          CHKERRQ(ierr);
-        }
-        if (xPassive1p[i] == 1) {
-          for (PetscInt j = 0; j < 8; j++) {
-            n_ele[j] = 0.0;
-          }
-          ierr = VecSetValuesLocal (N[loadCondition], 8, edof, n_ele,
-              INSERT_VALUES);
-          CHKERRQ(ierr);
-        }
+        ierr = VecSetValuesLocal (N[loadCondition], 8, edof, n_ele,
+            INSERT_VALUES);
+        CHKERRQ(ierr);
       }
     }
-    VecAssemblyBegin (N[loadCondition]);
-    VecAssemblyEnd (N[loadCondition]);
-    VecAssemblyBegin (RHS[loadCondition]);
-    VecAssemblyEnd (RHS[loadCondition]);
   }
+
 #endif
 
   // Restore vectors
-  for (PetscInt loadCondition = 0; loadCondition < numLoads;
-      ++loadCondition) {
-    VecAssemblyBegin (N[loadCondition]);
-    VecAssemblyEnd (N[loadCondition]);
-    VecAssemblyBegin (RHS[loadCondition]);
-    VecAssemblyEnd (RHS[loadCondition]);
-  }
+  VecAssemblyBegin (N[loadCondition]);
+  VecAssemblyEnd (N[loadCondition]);
+  VecAssemblyBegin (RHS[loadCondition]);
+  VecAssemblyEnd (RHS[loadCondition]);
   VecRestoreArray (lcoor, &lcoorp);
   VecRestoreArray (elcoor, &elcoorp);
   DMDARestoreElements (da_nodes, &nel, &nen, &necon);
@@ -540,7 +533,7 @@ PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
   // Errorcode
   PetscErrorCode ierr;
 
-  for (PetscInt loadCondition = 0; loadCondition < numLoads; ++loadCondition) {
+  for (PetscInt loadCondition = 0; loadCondition < numLODFIX; ++loadCondition) {
     // Solve state eqs
     ierr = SolveState (xPhys, Emin, Emax, penal, loadCondition);
     CHKERRQ(ierr);
@@ -600,8 +593,7 @@ PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
     // Loop over elements
     for (PetscInt i = 0; i < nel; i++) {
       // loop over element nodes
-      if (xPassive0p[i] == 0 && xPassive1p[i] == 0 && xPassive2p[i] == 0
-          && xPassive3p[i] == 0) {
+      if (xPassive0p[i] != 0) {
 
         for (PetscInt j = 0; j < nen; j++) {
           // Get local dofs
@@ -624,12 +616,12 @@ PetscErrorCode LinearHeatConduction::ComputeObjectiveConstraintsSensitivities (
           gx[j] += xp[i];
           dg[j][i] = 1;
         }
-      } else if (xPassive0p[i] != 0) {
-        df[i] = 1.0E9;
-        nNonDesign += 1;
       } else if (xPassive1p[i] != 0 || xPassive2p[i] != 0
                  || xPassive3p[i] != 0) {
         df[i] = -1.0E9;
+        nNonDesign += 1;
+      } else {
+        df[i] = 1.0E9;
         nNonDesign += 1;
 
       }
@@ -704,6 +696,26 @@ PetscErrorCode LinearHeatConduction::WriteRestartFiles () {
   PetscViewerDestroy (&view);
 
   return ierr;
+}
+
+PetscErrorCode LinearHeatConduction::FEAWithTopOptResults (Vec xPhys,
+    Vec xPassive0,
+    Vec xPassive1, Vec xPassive2, Vec xPassive3, PetscInt loadConditionFEA,
+    PetscScalar *loadVectorFEAp) { // # new
+  // Errorcode
+  PetscErrorCode ierr = 0;
+
+  PetscPrintf (PETSC_COMM_WORLD, "FEA with TopOpt Results, step: %d\n",
+      loadConditionFEA);
+
+  // only first load condition because we are solving FEA only one at a time
+  SetUpLoadAndBC (da_nodal, da_nodal, xPassive0, xPassive1, xPassive2,
+      xPassive3, 0);
+  // Solve state eqs,
+  ierr = SolveState (xPhys, 1E-9, 1.0, 1.0, 0);
+  CHKERRQ(ierr);
+
+  return (ierr);
 }
 
 //##################################################################

@@ -28,10 +28,10 @@ class LinearElasticity {
 
   public:
     // Constructor
-    LinearElasticity (DM da_nodes, PetscInt m, PetscInt numLoads,
-        PetscInt numNodeLoadAddingCounts, PetscScalar nu, PetscScalar E,
-        PetscScalar *loadVector, Vec xPassive0, Vec xPassive1, Vec xPassive2,
-        Vec xPassive3); // # modified
+    LinearElasticity (DM da_nodes, PetscInt m, PetscInt numDES,
+        PetscInt numLODFIX, PetscInt numNodeLoadAddingCounts, PetscScalar nu,
+        PetscScalar E, PetscScalar *loadVector, Vec xPassive0, Vec xPassive1,
+        Vec xPassive2, Vec xPassive3); // # modified
 
     // Destructor
     ~LinearElasticity ();
@@ -71,6 +71,11 @@ class LinearElasticity {
     // Logical mesh
     DM da_nodal; // Nodal mesh
 
+    // # new; FEA with the TopOpt final results
+    PetscErrorCode FEAWithTopOptResults (Vec xPhys, Vec xPassive0,
+        Vec xPassive1, Vec xPassive2, Vec xPassive3, PetscInt loadConditionFEA,
+        PetscScalar *loadVectorFEAp);
+
   private:
     // Logical mesh
     PetscInt nn[DIM]; // # modified; Number of nodes in each direction
@@ -96,7 +101,8 @@ class LinearElasticity {
     PetscScalar E; // Young's modulus
 
     // Loading conditions
-    PetscInt numLoads; // # new; number of loading conditions
+    PetscInt numDES; // # new; number of loading conditions
+    PetscInt numLODFIX; // # new; number of loading conditions
     PetscScalar *loadVector; // # new; load vector
     PetscInt numNodeLoadAddingCounts; // # new; number of node adding loads during the system assembly
 
@@ -108,7 +114,7 @@ class LinearElasticity {
 
     // Set up the FE mesh, data structures, and load and boundary conditions
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
-        Vec xPassive2, Vec xPassive3); // # modified
+        Vec xPassive2, Vec xPassive3, PetscInt loadCondition); // # modified
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,

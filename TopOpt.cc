@@ -53,6 +53,7 @@ void TopOpt::Init () { // Dummy constructor
   nodeDensity = NULL; // # new
   nodeAddingCounts = NULL; // # new
   loadVector = NULL; // # new
+  loadVectorFEA = NULL; // # new
 
   SetUp ();
 }
@@ -85,19 +86,17 @@ TopOpt::~TopOpt () {
    * Newly added items
    */
   // Delete vectors
-  // Densities
   if (xPassive0 != NULL) VecDestroy (&xPassive0); // # new
   if (xPassive1 != NULL) VecDestroy (&xPassive1); // # new
   if (xPassive2 != NULL) VecDestroy (&xPassive2); // # new
   if (xPassive3 != NULL) VecDestroy (&xPassive3); // # new
   if (nodeDensity != NULL) VecDestroy (&nodeDensity); // # new
   if (nodeAddingCounts != NULL) VecDestroy (&nodeAddingCounts); // # new
-  // Name strings of input STL files
   if (inputSTL_DES != NULL) delete[] inputSTL_DES; // # new
   if (inputSTL_FIX != NULL) delete[] inputSTL_FIX; // # new
   if (inputSTL_LOD != NULL) delete[] inputSTL_LOD; // # new
-  // Delete the gravity load vector
   if (loadVector != NULL) delete[] loadVector; // # new
+  if (loadVectorFEA != NULL) delete[] loadVectorFEA; // # new
 }
 
 // NO METHODS !
@@ -117,18 +116,24 @@ PetscErrorCode TopOpt::SetUp () {
   xc[1] = 2.0;
   xc[2] = 0.0;
   xc[3] = 1.0;
-  numLoads = 1; // number of loading conditions
-  loadVector = new PetscScalar[numLoads * DIM]; // body load (e.g. gravity accleration)
-  loadVector[0 * DIM + 0] = 0.0; // x
-  loadVector[0 * DIM + 1] = -10000; // y
-  inputSTL_DES = new std::string[1];
-  inputSTL_FIX = new std::string[numLoads];
-  inputSTL_LOD = new std::string[numLoads];
-  inputSTL_SLD = new std::string[1];
-  inputSTL_DES[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_DES.STL");
-  inputSTL_FIX[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_FIX.STL");
-  inputSTL_LOD[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_LOD.STL");
-  inputSTL_SLD[0].assign ("");
+  numDES = 1; // # new; number of design domains
+  numSLD = 1; // # new; number of solid domains
+  numLODFIX = 1; // # new; number of loading conditions
+  loadVector = new PetscScalar[numLODFIX * DIM]; // # new; applied load vector
+  loadVector[0 * DIM + 0] = 0; // # new; x
+  loadVector[0 * DIM + 1] = -1.0; // # new;  y
+  numLODFIXFEA = 1; // # new; number of loading conditions
+  loadVectorFEA = new PetscScalar[numLODFIXFEA * DIM]; // # new; applied load vector
+  loadVectorFEA[0 * DIM + 0] = 1.0; // # new; x
+  loadVectorFEA[0 * DIM + 1] = -1.0; // # new;  y
+  inputSTL_DES = new std::string[numDES]; // # new
+  inputSTL_SLD = new std::string[numSLD]; // # new
+  inputSTL_FIX = new std::string[numLODFIX]; // # new
+  inputSTL_LOD = new std::string[numLODFIX]; // # new
+  inputSTL_DES[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_DES.STL"); // # new
+  inputSTL_SLD[0].assign (""); // # new
+  inputSTL_FIX[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_FIX.STL"); // # new
+  inputSTL_LOD[0].assign ("./CAD_models/2D/2D_elasticity/2D_bracket_LOD.STL"); // # new
   volfrac = 0.45;
   rmin = 6.0 * PetscMax(xc[1] / (nxyz[0] - 1),
              PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
@@ -143,18 +148,21 @@ PetscErrorCode TopOpt::SetUp () {
   xc[1] = 80.0;
   xc[2] = 0.0;
   xc[3] = 40.0;
-  numLoads = 2; // number of loading conditions
-  inputSTL_DES = new std::string[1];
-  inputSTL_FIX = new std::string[numLoads];
-  inputSTL_LOD = new std::string[numLoads];
-  inputSTL_SLD = new std::string[1];
+  numDES = 1; // # new; number of design domains
+  numSLD = 1; // # new; number of solid domains
+  numLODFIX = 2; // number of loading conditions
+  inputSTL_DES = new std::string[numDES];
+  inputSTL_SLD = new std::string[numSLD];
+  inputSTL_FIX = new std::string[numLODFIX];
+  inputSTL_LOD = new std::string[numLODFIX];
+  numLODFIXFEA = 1; // # new; number of loading conditions
   inputSTL_DES[0].assign ("./CAD_models/2D/2D_compliant/2D_compliant_DES.STL");
+  inputSTL_SLD[0].assign ("");
   inputSTL_FIX[0].assign ("./CAD_models/2D/2D_compliant/2D_compliant_FIX.STL");
   inputSTL_LOD[0].assign ("");
-  inputSTL_SLD[0].assign ("");
   volfrac = 0.3;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1),
-               PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
+             PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
   Emin = 1.0e-9;
 #elif PHYSICS == 2  // # new
   // Linear heat conduction
@@ -164,18 +172,21 @@ PetscErrorCode TopOpt::SetUp () {
   xc[1] = 50;
   xc[2] = 0.0;
   xc[3] = 62;
-  numLoads = 1; // number of loading conditions
-  inputSTL_DES = new std::string[1];
-  inputSTL_FIX = new std::string[numLoads];
-  inputSTL_LOD = new std::string[numLoads];
-  inputSTL_SLD = new std::string[1];
+  numDES = 1; // # new; number of design domains
+  numSLD = 1; // # new; number of solid domains
+  numLODFIX = 1; // number of loading conditions
+  inputSTL_DES = new std::string[numDES];
+  inputSTL_SLD = new std::string[numSLD];
+  inputSTL_FIX = new std::string[numLODFIX];
+  inputSTL_LOD = new std::string[numLODFIX];
+  numLODFIXFEA = 1; // # new; number of loading conditions
   inputSTL_DES[0].assign ("./CAD_models/2D/2D_heat/2D_heatSink_DES.STL");
+  inputSTL_SLD[0].assign ("");
   inputSTL_FIX[0].assign ("./CAD_models/2D/2D_heat/2D_heatSink_FIX.STL");
   inputSTL_LOD[0].assign ("");
-  inputSTL_SLD[0].assign ("");
   volfrac = 0.45;
   rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1),
-               PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
+             PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1)));
   Emin = 1.0e-3;
 #endif
 
@@ -211,46 +222,60 @@ PetscErrorCode TopOpt::SetUp () {
   xc[3] = 1.0;
   xc[4] = 0.0;
   xc[5] = 1.0;
-  numLoads = 1; // # new; number of loading conditions
-  loadVector = new PetscScalar[numLoads * DIM]; // # new; body load (e.g. gravity accleration)
-  loadVector[0 * DIM + 0] = 0.0; // # new; x
+
+  numDES = 1; // # new; number of design domains
+  numSLD = 1; // # new; number of solid domains
+  numLODFIX = 1; // # new; number of loading conditions
+  loadVector = new PetscScalar[numLODFIX * DIM]; // # new; applied load vector
+  loadVector[0 * DIM + 0] = 0; // # new; x
   loadVector[0 * DIM + 1] = -1.0; // # new;  y
-  loadVector[0 * DIM + 2] = 0.0; // # new; z
-  inputSTL_DES = new std::string[1]; // # new
-  inputSTL_FIX = new std::string[numLoads]; // # new
-  inputSTL_LOD = new std::string[numLoads]; // # new
-  inputSTL_SLD = new std::string[1]; // # new
+  loadVector[0 * DIM + 2] = 0; // # new; z
+  numLODFIXFEA = 1; // # new; number of loading conditions
+  loadVectorFEA = new PetscScalar[numLODFIXFEA * DIM]; // # new; applied load vector
+  loadVectorFEA[0 * DIM + 0] = 1.0; // # new; x
+  loadVectorFEA[0 * DIM + 1] = -1.0; // # new;  y
+  loadVectorFEA[0 * DIM + 2] = 0; // # new; z
+  inputSTL_DES = new std::string[numDES]; // # new
+  inputSTL_SLD = new std::string[numSLD]; // # new
+  inputSTL_FIX = new std::string[numLODFIX]; // # new
+  inputSTL_LOD = new std::string[numLODFIX]; // # new
   inputSTL_DES[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_DES.STL"); // # new
+  inputSTL_SLD[0].assign (""); // # new
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_FIX.STL"); // # new
   inputSTL_LOD[0].assign ("./CAD_models/3D/3D_elasticity/3D_bracket_LOD.STL"); // # new
-  inputSTL_SLD[0].assign (""); // # new
   volfrac = 0.12;
   rmin = 3.0
          * PetscMax(xc[1] / (nxyz[0] - 1),
              PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // # modified 0.08;
   Emin = 1.0e-9;
+
 #elif PHYSICS == 1   // # new
   // Compliant
   nxyz[0] = 81; //241;
   nxyz[1] = 41; //121;
-  nxyz[2] = 9;//33;
+  nxyz[2] = 9; //33;
   xc[0] = 0.0;
   xc[1] = 80.0;
   xc[2] = 0.0;
   xc[3] = 40.0;
   xc[4] = 0.0;
   xc[5] = 10.0;
-  numLoads = 2; // number of loading conditions
-  inputSTL_DES = new std::string[1];
-  inputSTL_FIX = new std::string[numLoads];
-  inputSTL_LOD = new std::string[numLoads];
-  inputSTL_SLD = new std::string[1];
+  numDES = 1; // # new; number of design domains
+  numSLD = 1; // # new; number of solid domains
+  numLODFIX = 2; // number of loading conditions
+  inputSTL_DES = new std::string[numDES];
+  inputSTL_SLD = new std::string[numSLD];
+  inputSTL_FIX = new std::string[numLODFIX];
+  inputSTL_LOD = new std::string[numLODFIX];
+  numLODFIXFEA = 1; // # new; number of loading conditions
   inputSTL_DES[0].assign ("./CAD_models/3D/3D_compliant/3D_compliant_DES.STL");
+  inputSTL_SLD[0].assign ("");
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_compliant/3D_compliant_FIX.STL");
   inputSTL_LOD[0].assign ("");
-  inputSTL_SLD[0].assign ("");
   volfrac = 0.3;
-  rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
+  rmin = 3.0
+         * PetscMax(xc[1] / (nxyz[0] - 1),
+             PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
   Emin = 1.0e-9;
 #elif PHYSICS == 2   // # new
   // Linear heat conduction
@@ -263,17 +288,22 @@ PetscErrorCode TopOpt::SetUp () {
   xc[3] = 62;
   xc[4] = 0.0;
   xc[5] = 50.0;
-  numLoads = 1; // number of loading conditions
-  inputSTL_DES = new std::string[1];
-  inputSTL_FIX = new std::string[numLoads];
-  inputSTL_LOD = new std::string[numLoads];
-  inputSTL_SLD = new std::string[1];
+  numDES = 1; // # new; number of design domains
+  numSLD = 1; // # new; number of solid domains
+  numLODFIX = 1; // number of loading conditions
+  inputSTL_DES = new std::string[numDES];
+  inputSTL_SLD = new std::string[numSLD];
+  inputSTL_FIX = new std::string[numLODFIX];
+  inputSTL_LOD = new std::string[numLODFIX];
+  numLODFIXFEA = 1; // # new; number of loading conditions
   inputSTL_DES[0].assign ("./CAD_models/3D/3D_heat/3D_heatSink_oneQuarter_DES.STL");
+  inputSTL_SLD[0].assign ("");
   inputSTL_FIX[0].assign ("./CAD_models/3D/3D_heat/3D_heatSink_oneQuarter_FIX.STL");
   inputSTL_LOD[0].assign ("");
-  inputSTL_SLD[0].assign ("");
   volfrac = 0.3;
-  rmin = 3.0 * PetscMax(xc[1] / (nxyz[0] - 1), PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
+  rmin = 3.0
+         * PetscMax(xc[1] / (nxyz[0] - 1),
+             PetscMax(xc[3]/(nxyz[1]-1), xc[5]/(nxyz[2]-1))); // 0.08;
   Emin = 1.0e-3;
 #endif
 

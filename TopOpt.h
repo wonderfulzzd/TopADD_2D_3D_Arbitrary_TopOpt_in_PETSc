@@ -129,17 +129,21 @@ class TopOpt {
     PetscScalar E; // # new; Young's modulus
     // Optimization parameters
     PetscInt nnd; // # new; Total number of non design variables
-    PetscInt numLoads; // # new; number of loading conditions
-    PetscInt numNodeLoadAddingCounts; // # new; number of node adding loads during the system assembly
+    PetscInt numDES; // # new; number of design domains
+    PetscInt numSLD; // # new; number of solid domains
+    PetscInt numLODFIX; // # new; number of loading conditions
     PetscScalar *loadVector; // # new; load vector
+    PetscInt numLODFIXFEA; // # new; number of loading conditions for Post FEA
+    PetscScalar *loadVectorFEA; // # new; load vector
+    PetscInt numNodeLoadAddingCounts; // # new; number of node adding loads during the system assembly
     std::string *inputSTL_DES; // # new; name of part file
     std::string *inputSTL_FIX; // # new; name of fixture file
     std::string *inputSTL_LOD; // # new; name of loading domain file
     std::string *inputSTL_SLD; // # new; name of solid non-designable domain file
-    Vec xPassive0; // # new; the passive hole element index
+    Vec xPassive0; // # new; the design domain element index
+    Vec xPassive3; // # new; the passive solid element index
     Vec xPassive1; // # new; the passive fixture position element index
     Vec xPassive2; // # new; the passive loading position element index
-    Vec xPassive3; // # new; the passive solid element index
     Vec nodeDensity; // # new; node density
     Vec nodeAddingCounts; // # new; node adding counts when summing node density from element density
 };

@@ -46,15 +46,25 @@ class PrePostProcess {
     /*
      * Voxel occupancy info
      */
-    std::vector<int> occDES;
+    std::vector<std::vector<int>> occDES;
+    std::vector<std::vector<int>> occSLD;
     std::vector<std::vector<int>> occFIX;
     std::vector<std::vector<int>> occLOD;
-    std::vector<int> occSLD;
+
+    /*
+     * Number of design domains
+     */
+    unsigned int numDES;
+
+    /*
+     * Number of solid domains
+     */
+    unsigned int numSLD;
 
     /*
      * Number of loading conditions
      */
-    unsigned int numLoads;
+    unsigned int numLODFIX;
 
     /*
      * Voxel index, the voxel one-dimensional index

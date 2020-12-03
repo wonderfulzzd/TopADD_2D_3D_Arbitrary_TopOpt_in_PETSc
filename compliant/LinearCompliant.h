@@ -28,7 +28,8 @@ class LinearCompliant {
 
   public:
     // Constructor
-    LinearCompliant (DM da_nodes, PetscInt m, PetscInt numLoads, Vec xPassive0,
+    LinearCompliant (DM da_nodes, PetscInt m, PetscInt numDES,
+        PetscInt numLODFIX, PetscScalar nu, PetscScalar E, Vec xPassive0,
         Vec xPassive1, Vec xPassive2, Vec xPassive3); //new
 
     // Destructor
@@ -57,6 +58,11 @@ class LinearCompliant {
     // Logical mesh
     DM da_nodal; // Nodal mesh
 
+    // # new; FEA with the TopOpt final results
+    PetscErrorCode FEAWithTopOptResults (Vec xPhys, Vec xPassive0,
+        Vec xPassive1, Vec xPassive2, Vec xPassive3, PetscInt loadConditionFEA,
+        PetscScalar *loadVectorFEAp);
+
   private:
     // Logical mesh
     PetscInt nn[DIM]; // Number of nodes in each direction, new
@@ -79,9 +85,11 @@ class LinearCompliant {
     KSP ksp; // Pointer to the KSP object i.e. the linear solver+prec
     PetscInt nlvls;
     PetscScalar nu; // Possions ratio
+    PetscScalar E; // Possions ratio
 
     // Number of loading conditions
-    PetscInt numLoads;
+    PetscInt numDES;
+    PetscInt numLODFIX;
 
     // Element size
     PetscScalar dx, dy, dz;
@@ -89,14 +97,12 @@ class LinearCompliant {
     // Number of constraints
     PetscInt m;
 
-
-
     // External spring information
     Vec Sv; // spring vector
 
     // Set up the FE mesh, data structures, and load and boundary conditions
     PetscErrorCode SetUpLoadAndBC (DM da_nodes, Vec xPassive0, Vec xPassive1,
-        Vec xPassive2, Vec xPassive3);
+        Vec xPassive2, Vec xPassive3, PetscInt loadCondition);
 
     // Solve the FE problem
     PetscErrorCode SolveState (Vec xPhys, PetscScalar Emin, PetscScalar Emax,
