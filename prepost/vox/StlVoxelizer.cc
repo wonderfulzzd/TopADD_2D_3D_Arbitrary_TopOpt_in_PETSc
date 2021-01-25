@@ -172,21 +172,21 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
       // Get the triangular space range and vox index range, so that the vox
       // range can be reduced. Thus, the voxelization can be accelerated.
       // triangular range
-      triMax = vertices[3 * l];
-      triMin = vertices[3 * l];
-      voxMaxLocal = Vector3ui { 0, 0, 0 };
-      voxMinLocal = Vector3ui { 0, 0, 0 };
+      std::vector<int> dimseq { 1, 2, 3 }; // dim sequence
+      std::vector<unsigned int> nxyzseq { nx, ny, nz }; // voxel maximum range
+      std::vector<float> dxyzseq { dx, dy, dz }; // voxel maximum range
       for (int dim = 0; dim < 3; ++dim) { // x, y, z
+        triMax = vertices[3 * l];
+        triMin = vertices[3 * l];
+        voxMaxLocal = Vector3ui { 0, 0, 0 };
+        voxMinLocal = Vector3ui { 0, 0, 0 };
         for (int v = 0; v < 3; ++v) { // vertex 1, 2, 3
           triMax.value[dim] = std::max (triMax.value[dim],
               vertices[3 * l + v].value[dim]);
           triMin.value[dim] = std::min (triMin.value[dim],
               vertices[3 * l + v].value[dim]);
         }
-      }
-
-      // vox index range
-      for (int dim = 0; dim < 3; ++dim) { // x, y, z
+        // vox index range
         unsigned int tmp1, tmp2;
         tmp1 = static_cast<unsigned int> (std::ceil (
             triMax.value[dim] / voxSize.value[dim]));
@@ -195,48 +195,54 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
         voxMaxLocal.value[dim] = std::min (tmp1 + 1, voxMaxGlobal.value[dim]);
         voxMinLocal.value[dim] = std::max (tmp2 <= 1 ? 0 : tmp2 - 1,
             voxMinGlobal.value[dim]); // avoid “-1”
+        if (std::abs (normals[l].value[dim]) >= 1.0 - tolerance) {
+          // swap the index of the normal direction with the end in the sequence
+          int tmp = dimseq.back ();
+          dimseq.back () = dimseq[dim];
+          dimseq[dim] = tmp;
+          // swap the voxel maximum range of the normal direction with that of the end
+          unsigned int tmp2 = nxyzseq.back ();
+          nxyzseq.back () = nxyzseq[dim];
+          nxyzseq[dim] = tmp2;
+          // swap the voxel size of the normal direction with that of the end
+          float tmp3 = dxyzseq.back ();
+          dxyzseq.back () = dxyzseq[dim];
+          dxyzseq[dim] = tmp3;
+        }
       }
 
       // loop over local voxels
-      for (unsigned int k = voxMinLocal.value[2]; k < voxMaxLocal.value[2];
-          ++k) {
-        for (unsigned int j = voxMinLocal.value[1]; j < voxMaxLocal.value[1];
-            ++j) {
-          for (unsigned int i = voxMinLocal.value[0]; i < voxMaxLocal.value[0];
-              ++i) {
-
-            unsigned int i1 = i, j1 = j, k1 = k, i2 = i, j2 = j, k2 = k;
-            if (std::abs (normals[l].value[0]) >= 1.0 - tolerance) {
-              i1 = i1 + normals[l].value[0] / std::abs (normals[l].value[0]);
-              i2 = i2 - normals[l].value[0] / std::abs (normals[l].value[0]);
-            } else if (std::abs (normals[l].value[1]) >= 1.0 - tolerance) {
-              j1 = j1 + normals[l].value[1] / std::abs (normals[l].value[1]);
-              j2 = j2 - normals[l].value[1] / std::abs (normals[l].value[1]);
-            } else if (std::abs (normals[l].value[2]) >= 1.0 - tolerance) {
-              k1 = k1 + normals[l].value[2] / std::abs (normals[l].value[2]);
-              k2 = k2 - normals[l].value[2] / std::abs (normals[l].value[2]);
-            }
-            voxIndex = k * ny * nx + j * nx + i;
-            occTmp = (occSUF[voxIndex / BATCH] >> (voxIndex % BATCH)) & 1;
-            if (i1 < nx && i1 >= 0 && j1 < ny && j1 >= 0 && k1 < nz
-                && k1 >= 0) {
-              voxIndex1 = k1 * ny * nx + j1 * nx + i1; // voxel next to the current along the normal direction
-              occTmp1 = (occSUF[voxIndex1 / BATCH] >> (voxIndex1 % BATCH)) & 1;
-            } else {
-              occTmp1 = 0;
-            }
-            if (i2 < nx && i2 >= 0 && j2 < ny && j2 >= 0 && k2 < nz
-                && k2 >= 0) {
-              voxIndex2 = k2 * ny * nx + j2 * nx + i2; // voxel next to the current along the normal direction
-              occTmp2 = (occSUF[voxIndex2 / BATCH] >> (voxIndex2 % BATCH)) & 1;
-            } else {
-              occTmp2 = 0;
+      // normalize the normals vector to 1
+      int normal = normals[l].value[dimseq.back ()]
+                   / std::abs (normals[l].value[dimseq.back ()]);
+      for (unsigned int k = voxMinLocal.value[dimseq[2]];
+          k < voxMaxLocal.value[dimseq[2]]; ++k) {
+        for (unsigned int j = voxMinLocal.value[dimseq[1]];
+            j < voxMaxLocal.value[dimseq[1]]; ++j) {
+          for (unsigned int i = voxMinLocal.value[dimseq[0]];
+              i < voxMaxLocal.value[dimseq[0]]; ++i) {
+            unsigned int front = k, behind = k;
+            bool checkInflation = 0;
+            if (behind >= 1 && front + 1 <= nxyzseq.back ()) {
+              front = front + normal;
+              behind = behind - normal;
+              voxIndex1 = front * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                          + i; // voxel next to the current along the normal direction
+              occTmp1 = (occSUF[voxIndex1 / BATCH] >> (voxIndex1 % BATCH))
+                        & 1;
+              voxIndex2 = behind * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                          + i; // voxel next to the current along the normal direction
+              occTmp2 = (occSUF[voxIndex1 / BATCH] >> (voxIndex2 % BATCH))
+                        & 1;
+              voxIndex = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0] + i;
+              occTmp = (occSUF[voxIndex / BATCH] >> (voxIndex % BATCH)) & 1;
+              // only when front is void, current and behind are solid
+              checkInflation = ((occTmp1==0) & occTmp & occTmp2);
             }
             // voxel min and max bound
             Vector3f min = { dx * i, dy * j, dz * k };
             Vector3f max = { dx * (i + 1), dy * (j + 1), dz * (k + 1) };
-
-            if (occTmp && occTmp1 == 0 && occTmp2) {
+            if (checkInflation) {
               overlapInflation = Triangle_box_intersection_remove_inflation (
                   min, max, vertices[3 * l], vertices[3 * l + 1],
                   vertices[3 * l + 2]);
@@ -304,7 +310,8 @@ void StlVoxelizer::CleanUp () {
 //#                               Private                                      #
 //##############################################################################
 
-StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
+StlType
+StlVoxelizer::GetStlFileFormat (const char *filename) {
 // Load the stl file
   std::ifstream in (filename);
   if (!in) {
@@ -365,7 +372,8 @@ StlType StlVoxelizer::GetStlFileFormat (const char *filename) {
   ERROR_THROW("Error during open the stl file for both ASCII and BINARY ...");
 }
 
-size_t StlVoxelizer::GetStlFileSize (const char *filename) {
+size_t
+StlVoxelizer::GetStlFileSize (const char *filename) {
   struct stat st;
   int statReturn = stat (filename, &st); // if succeed, statReturn = 0
   return (statReturn == 0) ? st.st_size : 0;
@@ -535,7 +543,7 @@ void StlVoxelizer::Fill_buffer (unsigned int nx, unsigned int ny,
         }
       }
 
-      for (unsigned int i = nx - 1; i + 1 > 0; --i) {
+      for (unsigned int i = nx - 1; i != static_cast<unsigned int> (-1); --i) {
         voxIndex = k * ny * nx + j * nx + i;
         occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
                   >> (voxIndex % BATCH))
@@ -592,7 +600,7 @@ void StlVoxelizer::Fill_buffer (unsigned int nx, unsigned int ny,
         }
       }
 
-      for (unsigned int j = ny - 1; j + 1 > 0; --j) {
+      for (unsigned int j = ny - 1; j != static_cast<unsigned int> (-1); --j) {
         voxIndex = k * ny * nx + j * nx + i;
         occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
                   >> (voxIndex % BATCH))
@@ -649,7 +657,7 @@ void StlVoxelizer::Fill_buffer (unsigned int nx, unsigned int ny,
         }
       }
 
-      for (unsigned int k = nz - 1; k + 1 > 0; --k) {
+      for (unsigned int k = nz - 1; k != static_cast<unsigned int> (-1); --k) {
         voxIndex = k * ny * nx + j * nx + i;
         occTmp = ((occBUF[voxIndex / BATCH] | occSUF[voxIndex / BATCH])
                   >> (voxIndex % BATCH))
@@ -713,7 +721,7 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
         }
       }
 
-      for (unsigned int i = nx - 1; i + 1 > 0; --i) {
+      for (unsigned int i = nx - 1; i != static_cast<unsigned int> (-1); --i) {
         voxIndex = k * ny * nx + j * nx + i;
         occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
                   >> (voxIndex % BATCH))
@@ -772,7 +780,7 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
         }
       }
 
-      for (unsigned int j = ny - 1; j + 1 > 0; --j) {
+      for (unsigned int j = ny - 1; j != static_cast<unsigned int> (-1); --j) {
         voxIndex = k * ny * nx + j * nx + i;
         occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
                   >> (voxIndex % BATCH))
@@ -831,7 +839,7 @@ void StlVoxelizer::Fill_solid (std::vector<int> &occ, unsigned int nx,
         }
       }
 
-      for (int k = nz - 1; k + 1 > 0; --k) {
+      for (unsigned int k = nz - 1; k != static_cast<unsigned int> (-1); --k) {
         voxIndex = k * ny * nx + j * nx + i;
         occTmp = ((occ[voxIndex / BATCH] & occSUF[voxIndex / BATCH])
                   >> (voxIndex % BATCH))
