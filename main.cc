@@ -50,7 +50,12 @@ int main (int argc, char *argv[]) {
 
   // STEP 2: Pre-processing to define the design domain by using passive element assigning method
   PrePostProcess *prepost = new PrePostProcess (opt); // # new
-#if IMPORT_GEO == 1
+#if IMPORT_GEO == 0
+  VecSet(opt->xPassive0, 1.0);  // the whole domain is design domain
+  VecSet(opt->xPassive1, 0.0);  // no non-designable solid domain
+  VecSet(opt->xPassive2, 0.0);  // no fix domain
+  VecSet(opt->xPassive3, 0.0);  // no load domain
+#elif IMPORT_GEO == 1
   prepost->DesignDomainInitialization (opt); // # new
 #endif
 
