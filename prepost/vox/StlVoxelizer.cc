@@ -172,14 +172,15 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
       // Get the triangular space range and vox index range, so that the vox
       // range can be reduced. Thus, the voxelization can be accelerated.
       // triangular range
-      std::vector<int> dimseq { 1, 2, 3 }; // dim sequence
+      std::vector<int> dimseq { 0, 1, 2 }; // dim sequence
       std::vector<unsigned int> nxyzseq { nx, ny, nz }; // voxel maximum range
       std::vector<float> dxyzseq { dx, dy, dz }; // voxel maximum range
+      triMax = vertices[3 * l];
+      triMin = vertices[3 * l];
+      voxMaxLocal = Vector3ui { 0, 0, 0 };
+      voxMinLocal = Vector3ui { 0, 0, 0 };
+      
       for (int dim = 0; dim < 3; ++dim) { // x, y, z
-        triMax = vertices[3 * l];
-        triMin = vertices[3 * l];
-        voxMaxLocal = Vector3ui { 0, 0, 0 };
-        voxMinLocal = Vector3ui { 0, 0, 0 };
         for (int v = 0; v < 3; ++v) { // vertex 1, 2, 3
           triMax.value[dim] = std::max (triMax.value[dim],
               vertices[3 * l + v].value[dim]);
