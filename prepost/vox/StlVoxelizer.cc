@@ -86,9 +86,9 @@ bool StlVoxelizer::Read_file (const std::string &filename) {
 void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
     unsigned int ny, unsigned int nz, float dx, float dy, float dz) {
 
-  unsigned int voxIndex, voxIndex1, voxIndex2;
-  unsigned int occTmp, occTmp1, occTmp2;
-  bool overlap, overlapInflation;
+  unsigned int voxIndex = 0, voxIndex1 = 0, voxIndex2 = 0;
+  unsigned int occTmp = 0, occTmp1 = 0, occTmp2 = 0;
+  bool overlap = 0, overlapInflation = 0;
   float tolerance = 1E-4 * std::min (dx, std::min (dy, dz));
   // Initialize occupancy vector
   occSize = (nx * ny * nz - 1) / BATCH + 1; // occupancy vector size after batched
@@ -172,14 +172,14 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
       // Get the triangular space range and vox index range, so that the vox
       // range can be reduced. Thus, the voxelization can be accelerated.
       // triangular range
-      std::vector<int> dimseq { 1, 2, 3 }; // dim sequence
+      std::vector<int> dimseq { 0, 1, 2 }; // dim sequence
       std::vector<unsigned int> nxyzseq { nx, ny, nz }; // voxel maximum range
       std::vector<float> dxyzseq { dx, dy, dz }; // voxel maximum range
+      triMax = vertices[3 * l];
+      triMin = vertices[3 * l];
+      voxMaxLocal = Vector3ui { 0, 0, 0 };
+      voxMinLocal = Vector3ui { 0, 0, 0 };
       for (int dim = 0; dim < 3; ++dim) { // x, y, z
-        triMax = vertices[3 * l];
-        triMin = vertices[3 * l];
-        voxMaxLocal = Vector3ui { 0, 0, 0 };
-        voxMinLocal = Vector3ui { 0, 0, 0 };
         for (int v = 0; v < 3; ++v) { // vertex 1, 2, 3
           triMax.value[dim] = std::max (triMax.value[dim],
               vertices[3 * l + v].value[dim]);
@@ -195,50 +195,69 @@ void StlVoxelizer::Voxelize_surface (std::vector<int> &occ, unsigned int nx,
         voxMaxLocal.value[dim] = std::min (tmp1 + 1, voxMaxGlobal.value[dim]);
         voxMinLocal.value[dim] = std::max (tmp2 <= 1 ? 0 : tmp2 - 1,
             voxMinGlobal.value[dim]); // avoid “-1”
-        if (std::abs (normals[l].value[dim]) >= 1.0 - tolerance) {
-          // swap the index of the normal direction with the end in the sequence
-          int tmp = dimseq.back ();
-          dimseq.back () = dimseq[dim];
-          dimseq[dim] = tmp;
-          // swap the voxel maximum range of the normal direction with that of the end
-          unsigned int tmp2 = nxyzseq.back ();
-          nxyzseq.back () = nxyzseq[dim];
-          nxyzseq[dim] = tmp2;
-          // swap the voxel size of the normal direction with that of the end
-          float tmp3 = dxyzseq.back ();
-          dxyzseq.back () = dxyzseq[dim];
-          dxyzseq[dim] = tmp3;
-        }
       }
 
       // loop over local voxels
       // normalize the normals vector to 1
-      int normal = normals[l].value[dimseq.back ()]
-                   / std::abs (normals[l].value[dimseq.back ()]);
       for (unsigned int k = voxMinLocal.value[dimseq[2]];
           k < voxMaxLocal.value[dimseq[2]]; ++k) {
         for (unsigned int j = voxMinLocal.value[dimseq[1]];
             j < voxMaxLocal.value[dimseq[1]]; ++j) {
           for (unsigned int i = voxMinLocal.value[dimseq[0]];
               i < voxMaxLocal.value[dimseq[0]]; ++i) {
-            unsigned int front = k, behind = k;
             bool checkInflation = 0;
-            if (behind >= 1 && front + 1 <= nxyzseq.back ()) {
-              front = front + normal;
-              behind = behind - normal;
-              voxIndex1 = front * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+            if (std::abs (normals[l].value[0]) >= 1.0 - tolerance) { // x
+              int normal = normals[l].value[dimseq[0]]
+                           / std::abs (normals[l].value[dimseq[0]]);
+              unsigned int front = i, behind = i;
+              if (behind >= 1 && front + 1 <= nxyzseq[0]) {
+                front = front + normal;
+                behind = behind - normal;
+                voxIndex1 = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                          + front; // voxel next to the current along the normal direction
+                voxIndex2 = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                          + behind; // voxel next to the current along the normal direction
+                voxIndex = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0] + i;
+              }
+            } else if (std::abs (normals[l].value[1]) >= 1.0 - tolerance) { //y
+              int normal = normals[l].value[dimseq[1]]
+                           / std::abs (normals[l].value[dimseq[1]]);
+              unsigned int front = j, behind = j;
+              if (behind >= 1 && front + 1 <= nxyzseq[1]) {
+                front = front + normal;
+                behind = behind - normal;
+                voxIndex1 = k * nxyzseq[0] * nxyzseq[1] + front * nxyzseq[0]
                           + i; // voxel next to the current along the normal direction
-              occTmp1 = (occSUF[voxIndex1 / BATCH] >> (voxIndex1 % BATCH))
-                        & 1;
-              voxIndex2 = behind * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                voxIndex2 = k * nxyzseq[0] * nxyzseq[1] + behind * nxyzseq[0]
                           + i; // voxel next to the current along the normal direction
-              occTmp2 = (occSUF[voxIndex1 / BATCH] >> (voxIndex2 % BATCH))
-                        & 1;
-              voxIndex = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0] + i;
-              occTmp = (occSUF[voxIndex / BATCH] >> (voxIndex % BATCH)) & 1;
-              // only when front is void, current and behind are solid
-              checkInflation = ((occTmp1==0) & occTmp & occTmp2);
+                voxIndex = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0] + i;
+              }
+            } else if (std::abs (normals[l].value[2]) >= 1.0 - tolerance) { //z
+              int normal = normals[l].value[dimseq[2]]
+                           / std::abs (normals[l].value[dimseq[2]]);
+              unsigned int front = k, behind = k;
+              if (behind >= 1 && front + 1 <= nxyzseq[2]) {
+                front = front + normal;
+                behind = behind - normal;
+                voxIndex1 = front * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                          + i; // voxel next to the current along the normal direction
+                voxIndex2 = behind * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0]
+                          + i; // voxel next to the current along the normal direction
+                voxIndex = k * nxyzseq[0] * nxyzseq[1] + j * nxyzseq[0] + i;
+              }
+            } else {
+              voxIndex1 = 0; // voxel next to the current along the normal direction
+              voxIndex2 = 0; // voxel next to the current along the normal direction
+              voxIndex = 0;
             }
+
+            occTmp1 = (occSUF[voxIndex1 / BATCH] >> (voxIndex1 % BATCH))
+                        & 1;
+            occTmp2 = (occSUF[voxIndex2 / BATCH] >> (voxIndex2 % BATCH))
+                        & 1;
+            occTmp = (occSUF[voxIndex / BATCH] >> (voxIndex % BATCH)) & 1;
+            // only when front is void, current and behind are solid
+            checkInflation = ((occTmp1==0) & occTmp & occTmp2);
             // voxel min and max bound
             Vector3f min = { dx * i, dy * j, dz * k };
             Vector3f max = { dx * (i + 1), dy * (j + 1), dz * (k + 1) };
