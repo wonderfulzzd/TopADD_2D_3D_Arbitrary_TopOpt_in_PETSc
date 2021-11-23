@@ -46,7 +46,7 @@ The optimized parts can be directly printed without any post-processing:
 ![3D printing](pic/04.jpg?raw=true "3D Printed Parts")
 
 
-## Citing this work as
+## Citing this work
 Zhang, ZD., Ibhadode, O., Bonakdar, A. et al. TopADD: a 2D/3D integrated topology optimization parallel-computing framework for arbitrary design domains. Struct Multidisc Optim 64, 1701–1723 (2021). https://doi.org/10.1007/s00158-021-02917-z
 
 
