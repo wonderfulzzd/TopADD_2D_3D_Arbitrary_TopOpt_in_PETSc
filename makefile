@@ -1,8 +1,8 @@
 PETSC_DIR=/home/wonderfulzzd/opt/petsc-3.10.2
 PETSC_ARCH=arch-linux-mpicc-debug
-CFLAGS = -I.
+CFLAGS=-I.
 FFLAGS=
-CPPFLAGS=-I.
+CXXFLAGS=-I.
 FPPFLAGS=
 LOCDIR=
 EXAMPLESC=
@@ -16,7 +16,7 @@ include ${PETSC_DIR}/lib/petsc/conf/variables
 include ${PETSC_DIR}/lib/petsc/conf/rules
 include ${PETSC_DIR}/lib/petsc/conf/test
 
-CPPFLAGS+=-std=c++11 -Wall -O0 \
+CXXFLAGS+=-std=c++11 -Wall -O0 \
 	-I./prepost \
 	-I./prepost/vox \
 	-I./timer \
