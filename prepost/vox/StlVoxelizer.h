@@ -27,6 +27,7 @@
 #include <queue>
 #include <sys/stat.h> // used in inquiry on file size
 #include <cmath>
+#include <stdexcept>
 
 /*
  * BATCH size:
