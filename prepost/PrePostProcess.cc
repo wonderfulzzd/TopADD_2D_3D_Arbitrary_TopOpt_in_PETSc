@@ -287,7 +287,13 @@ PetscErrorCode PrePostProcess::ImportAndVoxelizeGeometry (TopOpt *opt) {
           t2 - t1);
       PetscPrintf (PETSC_COMM_WORLD, "# Vexelized %s \n",
           opt->inputSTL_DES[designDomain].c_str ());
+    } else {  // no design domain specified, all initial block is design domain
+      int occSize = (nx * ny * nz - 1) / BATCH + 1; // occupancy vector size after batched
+      occDES[designDomain].clear ();
+      occDES[designDomain].resize (occSize);
+      std::fill(occDES[designDomain].begin(), occDES[designDomain].end(),32);
     }
+
   }
 
   // Non-designable solid domain voxelization
@@ -462,6 +468,12 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
             xPassive2p_2D[j][i] = 0;
             xPassive3p_2D[j][i] = 0;
           }
+        } else {  // no design domain specified, all initial block is design domain
+              xp_2D[j][i] = opt->volfrac;
+              xPassive0p_2D[j][i] += 1.0 * std::pow (2, 1.0 * designDomain);
+              xPassive1p_2D[j][i] = 0;
+              xPassive2p_2D[j][i] = 0;
+              xPassive3p_2D[j][i] = 0;         
         }
       }
 
@@ -618,6 +630,12 @@ PrePostProcess::AssignPassiveElement (TopOpt *opt)
               xPassive2p_3D[k][j][i] = 0;
               xPassive3p_3D[k][j][i] = 0;
             }
+          } else {  // no design domain specified, all initial block is design domain
+            xp_3D[k][j][i] = opt->volfrac;
+            xPassive0p_3D[k][j][i] += 1.0 * std::pow (2, 1.0 * designDomain);
+            xPassive1p_3D[k][j][i] = 0;
+            xPassive2p_3D[k][j][i] = 0;
+            xPassive3p_3D[k][j][i] = 0;         
           }
         }
 
